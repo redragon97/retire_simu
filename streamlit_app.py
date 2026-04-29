@@ -38,10 +38,10 @@ SS_START_AGE = st.sidebar.slider("Social Security Start Age", 62, 70, 67)
 
 st.sidebar.header("Initial Portfolio")
 
-CASH_START = st.sidebar.number_input("Cash", value=300_000)
+CASH_START = st.sidebar.number_input("Cash", value=100_000)
 TAXABLE_START = st.sidebar.number_input("Taxable", value=1_000_000)
 IRA_START = st.sidebar.number_input("IRA", value=1_000_000)
-ROTH_START = st.sidebar.number_input("Roth", value=1_000_000)
+ROTH_START = st.sidebar.number_input("Roth", value=000_000)
 
 st.sidebar.header("Returns")
 
@@ -51,7 +51,7 @@ DIV_YIELD = st.sidebar.slider("Dividend Yield", 0.0, 0.05, 0.03)
 
 st.sidebar.header("Spending")
 
-BASE_EXPENSES = st.sidebar.number_input("Annual Expenses", value=250_000)
+BASE_EXPENSES = st.sidebar.number_input("Annual Expenses", value=100_000)
 
 st.sidebar.header("Spending Smile Adjustments")
 

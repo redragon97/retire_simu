@@ -60,11 +60,13 @@ smile_mid = st.sidebar.slider("Age 65–75", -0.02, 0.02, -0.005, step=0.001, fo
 smile_slow = st.sidebar.slider("Age 75–85 (Slow-Go Years)", -0.03, 0.0, -0.010, step=0.001,format="%.3f")
 smile_late = st.sidebar.slider("Age 85+ (No-Go Years)", -0.02, 0.01, -0.005, step=0.001, format="%.3f")
 
+smile_scale = st.sidebar.slider("Smile Intensity Multiplier", 0.0, 2.0, 1.0, step=0.1)
+
 SMILE_REAL_CHANGE = {
-    (60, 65): smile_early,
-    (65, 75): smile_mid,
-    (75, 85): smile_slow,
-    (85, 96): smile_late,
+    (60, 65): smile_early * smile_scale,
+    (65, 75): smile_mid * smile_scale,
+    (75, 85): smile_slow * smile_scale,
+    (85, 96): smile_late * smile_scale,
 }
 
 st.sidebar.header("Inflation")

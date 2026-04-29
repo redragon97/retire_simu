@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
+#import plotly.graph_objects as go
 
 # Import your existing functions
 from retirement_planning_simulator import (
@@ -82,6 +82,7 @@ st.sidebar.header("Healthcare")
 USE_ACA_SUBSIDY = st.sidebar.checkbox("Use ACA Subsidy", value=True)
 BENCHMARK_PREMIUM = st.sidebar.number_input("ACA Premium", value=18_000)
 
+'''
 # -----------------------------
 # Build an interactive Chart2
 # -----------------------------
@@ -144,7 +145,7 @@ def interactive_chart2(df_med):
     )
 
     return fig
-
+'''
 
 def build_summary(df):
     summary = df.groupby("Age")["Portfolio"].agg(

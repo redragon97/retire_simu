@@ -1,9 +1,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-#import plotly.graph_objects as go
 
-# Import your existing functions
+# Import existing functions
 from retirement_planning_simulator import (
     run_simulation,
     chart1_fan,
@@ -81,71 +80,6 @@ st.sidebar.header("Healthcare")
 
 USE_ACA_SUBSIDY = st.sidebar.checkbox("Use ACA Subsidy", value=True)
 BENCHMARK_PREMIUM = st.sidebar.number_input("ACA Premium", value=18_000)
-
-'''
-# -----------------------------
-# Build an interactive Chart2
-# -----------------------------
-def interactive_chart2(df_med):
-
-    ages = df_med["Age"]
-
-    fig = go.Figure()
-
-    # -----------------------------
-    # Portfolio Composition (stacked area)
-    # -----------------------------
-    fig.add_trace(go.Scatter(
-        x=ages, y=df_med["Cash"],
-        stackgroup='one', name="Cash"
-    ))
-
-    fig.add_trace(go.Scatter(
-        x=ages, y=df_med["Taxable"],
-        stackgroup='one', name="Taxable"
-    ))
-
-    fig.add_trace(go.Scatter(
-        x=ages, y=df_med["IRA"],
-        stackgroup='one', name="IRA"
-    ))
-
-    fig.add_trace(go.Scatter(
-        x=ages, y=df_med["Roth"],
-        stackgroup='one', name="Roth"
-    ))
-
-    # -----------------------------
-    # Expenses line
-    # -----------------------------
-    fig.add_trace(go.Scatter(
-        x=ages,
-        y=df_med["Expenses"],
-        name="Expenses",
-        line=dict(dash="dash", width=3),
-    ))
-
-    # -----------------------------
-    # Tax + Healthcare overlay
-    # -----------------------------
-    fig.add_trace(go.Scatter(
-        x=ages,
-        y=df_med["Tax"] + df_med["Health"],
-        name="Tax + Healthcare",
-        line=dict(width=3),
-        visible="legendonly"   # hidden by default
-    ))
-
-    fig.update_layout(
-        title="Interactive Retirement Dashboard (Median Path)",
-        xaxis_title="Age",
-        yaxis_title="Value ($)",
-        hovermode="x unified",
-        height=600
-    )
-
-    return fig
-'''
 
 def build_summary(df):
     summary = df.groupby("Age")["Portfolio"].agg(

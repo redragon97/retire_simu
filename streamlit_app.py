@@ -34,7 +34,7 @@ MARGINAL_STOP = st.sidebar.slider("Max Marginal Rate for Roth Conversion", 0.20,
 st.sidebar.header("Timing Strategy")
 
 START_AGE = st.sidebar.slider("Retirement Age", 55, 70, 60)
-SS_START_AGE = st.sidebar.slider("Social Security Start Age", 62, 70, 67)
+SS_START_AGE = st.sidebar.slider("Social Security Start Age", 62, 70, 70)
 
 st.sidebar.header("Initial Portfolio")
 

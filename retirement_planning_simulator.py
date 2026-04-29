@@ -91,10 +91,10 @@ SEED      = 54      # random seed for reproducibility
 # during the simulation, which is the realistic starting point if the IRA
 # has never been converted before.
 
-CASH_START    =   300_000   # money market / savings — earns no return in model
-TAXABLE_START = 1_000_000   # brokerage account — invested, generates dividends + gains
-IRA_START     = 1_000_000   # traditional IRA / 401(k) — pre-tax, subject to RMDs at 73
-ROTH_START    = 1_000_000   # Roth IRA — already after-tax, grows and withdraws tax-free
+CASH_START    =   100_000   # money market / savings — earns no return in model
+TAXABLE_START =   100_000   # brokerage account — invested, generates dividends + gains
+IRA_START     =   100_000   # traditional IRA / 401(k) — pre-tax, subject to RMDs at 73
+ROTH_START    =   100_000   # Roth IRA — already after-tax, grows and withdraws tax-free
 
 
 # =============================================================================
@@ -139,7 +139,7 @@ COST_BASIS_PCT = 0.70   # 70% of the taxable account's value is cost basis (not 
 # Set all rates to 0.0 to model flat real spending (no smile effect).
 # The smile only adjusts the lifestyle component — healthcare is separately modeled.
 
-BASE_EXPENSES = 250_000   # annual lifestyle spending in today's 2025 dollars
+BASE_EXPENSES = 100_000   # annual lifestyle spending in today's 2025 dollars
 
 SMILE_REAL_CHANGE = {
     (60, 65): +0.005,   # +0.5%/yr real — peak-activity early retirement

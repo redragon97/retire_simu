@@ -77,7 +77,7 @@ INFLATION = st.sidebar.slider("Inflation Rate", 0.01, 0.06, 0.035)
 st.markdown("""
     <style>
     section[data-testid="stSidebar"] .stSelectbox > label {
-        font-size: 30px !important;
+        font-size: 40px !important;
         font-weight: bold !important;
         color: #fff !important;
     }

@@ -5,6 +5,7 @@ import retirement_planning_simulator as sim
 
 # Import existing functions
 from retirement_planning_simulator import (
+    SimConfig,
     run_simulation,
     chart1_fan,
     chart2_median,

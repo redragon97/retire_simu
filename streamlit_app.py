@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import retirement_planning_simulator as sim
 
 # Import existing functions
 from retirement_planning_simulator import (
@@ -83,6 +84,32 @@ st.sidebar.header("Healthcare")
 USE_ACA_SUBSIDY = st.sidebar.checkbox("Use ACA Subsidy", value=True)
 BENCHMARK_PREMIUM = st.sidebar.number_input("ACA Premium", value=18_000)
 
+# =========================================================
+# SPENDING CURVE PREVIEW
+# =========================================================
+def preview_smile_curve():
+    ages = list(range(START_AGE, END_AGE + 1))
+    expenses = [sim.smile_expenses(age, BASE_EXPENSES) for age in ages]
+
+    import plotly.graph_objects as go
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=ages,
+        y=expenses,
+        name="Real Spending with Smile Adjustments",
+        line=dict(width=3)
+    ))
+
+    fig.update_layout(
+        title="Spending Curve with Smile Adjustments (Real $)",
+        xaxis_title="Age",
+        yaxis_title="Annual Spending",
+        height=350
+    )
+    return fig
+
+st.plotly_chart(preview_smile_curve(), width='stretch')
+
 def build_summary(df):
     summary = df.groupby("Age")["Portfolio"].agg(
         Median="median",
@@ -105,8 +132,6 @@ def build_median_df(df):
 # =========================================================
 # RUN BUTTON
 # =========================================================
-
-import retirement_planning_simulator as sim
 
 if st.button("🚀 Run Simulation"):
 
@@ -186,6 +211,19 @@ if st.button("🚀 Run Simulation"):
     st.write("### Chart 1 — Monte Carlo Fan (Subsidized ACA)")
     fig1 = chart1_fan(summary_a)
     st.pyplot(fig1)
+    st.markdown("""
+    **What this shows:**  
+    This chart visualizes the full range of possible portfolio outcomes across all Monte Carlo simulations.
+
+    **How to read it:**  
+    - The middle line represents the *median* outcome (50th percentile).  
+    - The shaded bands show the spread of outcomes (e.g., 10th–90th percentiles).  
+    - A wider fan means more uncertainty over time.  
+    - If the lower bands approach zero, it indicates a higher risk of portfolio depletion.
+
+    **Why it matters:**  
+    This chart helps you understand *risk and uncertainty*, not just average outcomes.
+    """)
 
     # ---------- Chart 2A ----------
     #st.write("### Interactive Chart 2 — Subsidized ACA")
@@ -204,11 +242,42 @@ if st.button("🚀 Run Simulation"):
     #fig_int_b = interactive_chart2(df_med_b)
     #st.plotly_chart(fig_int_b, use_container_width=True)
 
+    st.markdown("""
+    **What this shows:**  
+    This dashboard displays the *median (typical)* retirement path, breaking down your portfolio and spending over time.
+
+    **How to read it:**  
+    - The stacked areas show how your assets are allocated (Cash, Taxable, IRA, Roth).  
+    - The dashed line represents annual spending (inflation-adjusted).  
+    - You can toggle components on/off using the legend to isolate specific behaviors.  
+    - Hover over any age to see exact values.
+
+    **What to look for:**  
+    - When and how quickly IRA assets are drawn down  
+    - Growth of Roth assets (often driven by conversions)  
+    - Periods where expenses exceed portfolio growth  
+    - Tax and healthcare spikes (if enabled)
+
+    **Why it matters:**  
+    This chart explains *why* your portfolio succeeds or fails—it reveals the mechanics behind the simulation.
+    """)
     # ---------- Chart 3 ----------
     st.write("### Chart 3 — Percentile Scenarios")
     fig3 = chart3_paths(df_a)
     st.pyplot(fig3)
-    
+
+    st.markdown("""
+    **What this shows:**  
+    This chart highlights specific percentile scenarios (e.g., pessimistic, median, optimistic outcomes).
+
+    **How to read it:**  
+    - Each line represents a different percentile path (e.g., 10th, 50th, 90th).  
+    - The spread between lines shows variability in outcomes.  
+    - The lower percentile lines represent downside risk scenarios.
+
+    **Why it matters:**  
+    It provides concrete examples of “bad”, “typical”, and “good” outcomes instead of just statistical bands.
+    """)
     # ---------- Chart 4 ----------
     st.write("### Chart 4 — Scenario Comparison")
     fig4 = chart4_comparison(
@@ -218,7 +287,24 @@ if st.button("🚀 Run Simulation"):
         "No ACA Subsidy"
     )
     st.pyplot(fig4)
-    
+
+    st.markdown("""
+    **What this shows:**  
+    This chart compares two strategies: with ACA subsidies vs without subsidies.
+
+    **How to read it:**  
+    - Each line represents the median portfolio outcome under a different scenario.  
+    - The gap between lines shows the financial impact of ACA subsidies over time.  
+    - Divergence later in retirement reflects compounding effects.
+
+    **What to look for:**  
+    - How early differences grow over time  
+    - Whether one strategy consistently dominates  
+    - Sensitivity to tax and income decisions
+
+    **Why it matters:**  
+    This helps quantify the *real dollar impact* of healthcare and tax strategy decisions.
+    """)
     # =====================================================
     # DOWNLOAD DATA
     # =====================================================

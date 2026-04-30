@@ -89,7 +89,7 @@ BENCHMARK_PREMIUM = st.sidebar.number_input("ACA Premium", value=18_000)
 # =========================================================
 def preview_smile_curve():
     ages = list(range(START_AGE, END_AGE + 1))
-    expenses = [sim.smile_expenses(age, BASE_EXPENSES) for age in ages]
+    expenses = [sim.smile_expenses(age, config) for age in ages]
 
     import plotly.graph_objects as go
     fig = go.Figure()

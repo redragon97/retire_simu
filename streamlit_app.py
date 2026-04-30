@@ -200,7 +200,7 @@ if st.button("🚀 Run Simulation"):
     # =====================================================
     # RUN BOTH SCENARIOS
     # =====================================================
-    config_a = config
+    config_a = SimConfig(**vars(config))
     config_a.use_aca_subsidy = True
     df_a = run_simulation(config_a, "Subsidized ACA")
 

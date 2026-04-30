@@ -21,7 +21,7 @@ TWO SCENARIOS ARE COMPARED IN EVERY RUN
   Scenario B — Full-price ACA (USE_ACA_SUBSIDY = False):
       You pay the full benchmark premium ($18k/yr) regardless of income.
       No income-linked surcharge, so the optimizer can convert much more in the
-      low-income window before Social Security and RMDs begin (ages 60–72).
+      low-income window before Social Security and RMDs begin (ages 60–75).
 
 KEY DESIGN PRINCIPLES
 -----------------------
@@ -183,7 +183,7 @@ SS_AMOUNT    = 100_000    # annual SS benefit in today's dollars (couple)
 # SECTION 7 — ROTH CONVERSION STRATEGY
 # =============================================================================
 # Strategic Roth conversions happen each year from age START_AGE through
-# ROTH_END_AGE (the year before RMDs begin).  After age 72, RMDs from the IRA
+# ROTH_END_AGE (the year before RMDs begin).  After age 75, RMDs from the IRA
 # are mandatory and large enough that additional conversions are rarely optimal.
 #
 # The optimizer finds the largest conversion whose marginal all-in cost (federal
@@ -192,10 +192,10 @@ SS_AMOUNT    = 100_000    # annual SS benefit in today's dollars (couple)
 # WHY 35%?
 #   At ages 60–64 with ACA:  12% fed + 15% LTCG push + 8.5% ACA = 35.5%
 #     — 35% allows conversion through the entire 12% federal bracket
-#   At ages 65–72 (Medicare, no ACA):  22% fed + 5.75% VA = 27.75%
+#   At ages 65–75 (Medicare, no ACA):  22% fed + 5.75% VA = 27.75%
 #     — 35% comfortably covers the full 22% bracket, which is the primary
 #       window for tax-efficient conversion before RMDs start
-#   Future RMDs at 73+ will be taxed at 22–24%+, so converting now at
+#   Future RMDs at 76+ will be taxed at 22–24%+, so converting now at
 #   under 35% locks in savings on a growing IRA balance.
 
 # SECURE 2.0: RMD age = 75 for those born 1960 or later; change to 73 if born 1951-1959.
@@ -226,7 +226,7 @@ MARGINAL_STOP = 0.35  # stop converting when the next $1k costs more than 35% al
 #   False → Scenario B: full-price ACA, maximum Roth conversion pre-65
 
 MEDICARE_AGE      = 65
-ACA_FPL_2         = 19_920    # 2025 federal poverty level for a 2-person household
+ACA_FPL_2         = 20_440    # 2025 federal poverty level for a 2-person household
 BENCHMARK_PREMIUM = 18_000    # full-cost ACA benchmark silver plan (couple/year)
 MEDICARE_BASE     = 6_000     # approximate base Medicare Part B+D (couple/year)
 
@@ -268,12 +268,12 @@ BASE_BRACKETS_2025 = [             # (taxable income threshold, marginal rate)
     (487_450,  0.35),
     (731_200,  0.37),
 ]
-STD_DED_2025 = 29_200              # MFJ standard deduction (2025)
+STD_DED_2025 = 30_000              # MFJ (IRS Rev. Proc. 2024-40)            
 
 LTCG_BRACKETS_2025 = [             # (total income threshold, LTCG rate)
     (0,        0.00),
-    (94_050,   0.15),
-    (583_750,  0.20),
+    (96_700,   0.15),              # IRS Rev. Proc. 2024-40
+    (600_050,  0.20),
 ]
 
 RMD_TABLE = {                      # IRS Uniform Lifetime Table (SECURE 2.0)
@@ -287,7 +287,7 @@ RMD_TABLE = {                      # IRS Uniform Lifetime Table (SECURE 2.0)
 # VA brackets are NOT inflation-indexed (fixed thresholds every year).
 # Social Security is fully exempt from Virginia income tax.
 # LTCG is taxed as ordinary income in Virginia (no preferential rate).
-VA_STD_DED_MFJ = 17_500
+VA_STD_DED_MFJ = 18_000
 VA_BRACKETS = [
     (0,       0.0200),
     (3_000,   0.0300),
@@ -478,8 +478,7 @@ def irmaa_surcharge(magi):
     Medicare IRMAA (Income-Related Monthly Adjustment Amount) surcharges.
 
     Returns the annual surcharge for Part B + Part D combined, for a couple.
-    These are assessed on income from two years prior (IRMAA lookback), but
-    for simplicity the simulation applies them to current-year income.
+    These are assessed on income from two years prior (IRMAA lookback).
 
     Thresholds are for MFJ (2025 values, not inflation-adjusted in model):
       ≤ $206k : no surcharge
@@ -563,7 +562,7 @@ def optimal_roth_conversion(rmd_ord_div, ss, ltcg_fixed, ira_balance,
     IRA withdrawals for living expenses happen AFTER the conversion decision.
     Including them in base income would pre-fill brackets and suppress
     conversions during exactly the years when the IRA-to-Roth window is
-    most valuable (ages 60–72, before SS and RMDs begin).
+    most valuable (ages 60–75, before SS and RMDs begin).
 
     TWO-PASS SEARCH FOR SPEED
     ──────────────────────────
@@ -608,7 +607,10 @@ def optimal_roth_conversion(rmd_ord_div, ss, ltcg_fixed, ira_balance,
         magi = ordinary + ltcg_fixed
         # NIIT: Roth conversion is not NII, but pushes MAGI over $250k,
         # exposing existing NII (ltcg_fixed) to 3.8%.
-        niit = calc_niit(ltcg_fixed, 0.0, magi)
+        # niit = calc_niit(ltcg_fixed, 0.0, magi)
+        # Pass ord_div alongside ltcg_fixed
+        niit = calc_niit(ltcg_fixed, ord_div_estimate, magi)
+
         if age >= MEDICARE_AGE:
             # Use the 2-year lookback MAGI for IRMAA (SSA rule),
             # passed in from the simulation loop.
@@ -657,8 +659,8 @@ def run_simulation(scenario_label="Baseline"):
     WITHIN EACH YEAR, the sequence of events is:
       1. Compute inflation-indexed values (expenses, SS, tax brackets)
       2. Taxable account pays dividends (automatically recognized income)
-      3. Compute RMD if age ≥ 73 (forced IRA withdrawal → cash)
-      4. Decide Roth conversion (optimizer, ages 60–72 only)
+      3. Compute RMD if age ≥ RMD_START_AGE (= 75 for born 1960+; 73 for 1951-1959))
+      4. Decide Roth conversion (optimizer, ages 60–75 only)
       5. Fund lifestyle expenses from waterfall: cash → taxable → IRA → Roth
       6. Compute all taxes (federal ordinary, federal LTCG, Virginia, SS provisional)
       7. Compute healthcare cost (ACA or Medicare + IRMAA)
@@ -850,6 +852,7 @@ def run_simulation(scenario_label="Baseline"):
                 # NIIT (IRC §1411): 3.8% on NII when MAGI > $250k.
                 # NII = LTCG + all dividends (not IRA/RMD/SS).
                 # NIIT: NII = LTCG (includes qual_div gains) + all dividends
+                # NII = ltcg_from_sold + qual_div + ord_div = all investment income.
                 # niit     = calc_niit(ltcg, ord_div + qual_div, magi)
                 niit     = calc_niit(ltcg, ord_div, magi)
                 va_tax   = calc_va_tax(rmd + roth_conv + total_ira_wd + ord_div + ltcg)

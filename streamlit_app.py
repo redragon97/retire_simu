@@ -74,9 +74,18 @@ st.sidebar.header("Inflation")
 
 INFLATION = st.sidebar.slider("Inflation Rate", 0.01, 0.06, 0.035)
 
-# Example with a label (acts as the header)
+st.markdown("""
+    <style>
+    section[data-testid="stSidebar"] .stSelectbox > label {
+        font-size: 20px !important;
+        font-weight: bold !important;
+        color: #000 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 VA_BRACKETS = st.sidebar.selectbox(
-    "State Taxes:", 
+    "State Taxes", 
     ["VA"],
     label_visibility="visible"  # or "hidden", "collapsed"
 )   

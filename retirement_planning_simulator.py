@@ -91,10 +91,10 @@ SEED      = 54      # random seed for reproducibility
 # during the simulation, which is the realistic starting point if the IRA
 # has never been converted before.
 
-CASH_START    =   100_000   # money market / savings — earns no return in model
-TAXABLE_START =   100_000   # brokerage account — invested, generates dividends + gains
-IRA_START     =   100_000   # traditional IRA / 401(k) — pre-tax, subject to RMDs at 73
-ROTH_START    =   100_000   # Roth IRA — already after-tax, grows and withdraws tax-free
+CASH_START    =   300_000   # money market / savings — earns no return in model
+TAXABLE_START = 1_000_000   # brokerage account — invested, generates dividends + gains
+IRA_START     = 1_000_000   # traditional IRA / 401(k) — pre-tax, subject to RMDs at 73
+ROTH_START    = 1_000_000   # Roth IRA — already after-tax, grows and withdraws tax-free
 
 
 # =============================================================================
@@ -139,7 +139,7 @@ COST_BASIS_PCT = 0.70   # 70% of the taxable account's value is cost basis (not 
 # Set all rates to 0.0 to model flat real spending (no smile effect).
 # The smile only adjusts the lifestyle component — healthcare is separately modeled.
 
-BASE_EXPENSES = 100_000   # annual lifestyle spending in today's 2025 dollars
+BASE_EXPENSES = 250_000   # annual lifestyle spending in today's 2025 dollars
 
 SMILE_REAL_CHANGE = {
     (60, 65): +0.005,   # +0.5%/yr real — peak-activity early retirement
@@ -315,7 +315,7 @@ OUTPUT_FILE = "retirement_results.xlsx"
 # SECTION 11 — HELPER FUNCTIONS
 # =============================================================================
 
-def smile_expenses(age):
+def smile_expenses(age, base_expenses=None):
     """
     Return real lifestyle spending for the given age, adjusted by the
     retirement spending smile curve (SMILE_REAL_CHANGE).
@@ -332,7 +332,9 @@ def smile_expenses(age):
             if s <= yr < e:
                 real_factor *= (1 + rate)
                 break
-    return BASE_EXPENSES * real_factor
+    
+    base = BASE_EXPENSES if base_expenses is None else base_expenses
+    return base * real_factor
 
 
 def inflate(x, years):
@@ -713,7 +715,8 @@ def run_simulation(scenario_label="Baseline"):
             # ── Step 1: Inflation-indexed values for this year ────────────────
             # Expenses use the real spending smile (no inflation).
             # SS inflates for COLA. Tax brackets inflate for bracket indexing.
-            expenses  = smile_expenses(age)
+            #expenses  = smile_expenses(age)
+            expenses  = smile_expenses(age, BASE_EXPENSES)
             ss        = inflate(SS_AMOUNT, i) if age >= SS_START_AGE else 0.0
             brackets, std = inflate_brackets(BASE_BRACKETS_2025, STD_DED_2025, i)
             ltcg_bkts, _ = inflate_brackets(LTCG_BRACKETS_2025, 0, i)

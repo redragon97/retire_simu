@@ -74,6 +74,13 @@ st.sidebar.header("Inflation")
 
 INFLATION = st.sidebar.slider("Inflation Rate", 0.01, 0.06, 0.035)
 
+# Example with a label (acts as the header)
+VA_BRACKETS = st.selectbox(
+    "State Taxes:", 
+    ["VA"],
+    label_visibility="visible"  # or "hidden", "collapsed"
+)   
+
 st.sidebar.header("Social Security")
 
 SS_START_AGE = st.sidebar.number_input("SS Start Age", value=70)

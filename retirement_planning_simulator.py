@@ -1116,7 +1116,7 @@ def chart2_median(df_med, filename="chart2_median_detail.png", subtitle="Subsidi
 
     ax1.yaxis.set_major_formatter(fmt_k)
     ax1.set_title("Funding Sources vs. Expenses", fontsize=11, fontweight="bold")
-    ax1.legend(loc="upper left", fontsize=8, ncol=2, framealpha=0.85)
+    ax1.legend(loc="upper right", fontsize=8, ncol=2, framealpha=0.85)
     grid(ax1); ax1.set_xlim(START_AGE-0.5, END_AGE+0.5); add_milestones(ax1)
 
     # ── Panel 2: Portfolio Composition ──────────────────────────────────────
@@ -1126,7 +1126,7 @@ def chart2_median(df_med, filename="chart2_median_detail.png", subtitle="Subsidi
                   colors=[C_TEAL, C_BLUE, C_ORANGE, C_GREEN], alpha=0.85)
     ax2.yaxis.set_major_formatter(fmt_m)
     ax2.set_title("Portfolio Composition Over Time", fontsize=11, fontweight="bold")
-    ax2.legend(loc="upper right", fontsize=9)
+    ax2.legend(loc="upper left", fontsize=9)
     grid(ax2); ax2.set_xlim(START_AGE-0.5, END_AGE+0.5); add_milestones(ax2)
 
     # ── Panel 3: Taxes, Healthcare & Effective Rates ─────────────────────────
@@ -1160,7 +1160,7 @@ def chart2_median(df_med, filename="chart2_median_detail.png", subtitle="Subsidi
     bar_h = [mpatches.Patch(color=C_RED,    label="Federal Tax"),
              mpatches.Patch(color=C_ORANGE, label="Virginia Tax"),
              mpatches.Patch(color=C_PURPLE, label="Healthcare")]
-    ax3r.legend(handles=bar_h+[l1,l2], loc="upper left", fontsize=8, framealpha=0.9)
+    ax3r.legend(handles=bar_h+[l1,l2], loc="upper right", fontsize=8, framealpha=0.9)
     grid(ax3); ax3.set_xlim(START_AGE-0.5, END_AGE+0.5); add_milestones(ax3)
 
     #save_chart(fig, filename, "2")

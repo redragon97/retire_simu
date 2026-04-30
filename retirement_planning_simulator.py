@@ -68,48 +68,8 @@ import matplotlib.patches as mpatches
 import matplotlib.ticker as mticker
 from matplotlib.ticker import FuncFormatter
 from matplotlib.gridspec import GridSpec
-from dataclasses import dataclass
 
-# =============================================================================
-# SECTION 0 — DEFINE CONFIGURATION
-# =============================================================================
-@dataclass
-class SimConfig:
-    # Ages
-    start_age: int
-    end_age: int
 
-    # Portfolio
-    cash_start: float
-    taxable_start: float
-    ira_start: float
-    roth_start: float
-
-    # Returns
-    mean_return: float
-    vol_return: float
-    div_yield: float
-
-    # Spending
-    base_expenses: float
-    inflation: float
-    smile_real_change: dict
-
-    # Taxes / strategy
-    marginal_stop: float
-
-    # Social Security
-    ss_start_age: int
-    ss_amount: float
-
-    # Healthcare
-    use_aca_subsidy: bool
-    benchmark_premium: float
-
-    # Simulation
-    sims: int
-    seed: int
-	
 # =============================================================================
 # SECTION 1 — SIMULATION CONTROLS
 # =============================================================================
@@ -355,7 +315,7 @@ OUTPUT_FILE = "retirement_results.xlsx"
 # SECTION 11 — HELPER FUNCTIONS
 # =============================================================================
 
-def smile_expenses(age, config):
+def smile_expenses(age, base_expenses=None):
     """
     Return real lifestyle spending for the given age, adjusted by the
     retirement spending smile curve (SMILE_REAL_CHANGE).
@@ -367,13 +327,15 @@ def smile_expenses(age, config):
     rather than the base $250,000 — about 7% lower in real terms.
     """
     real_factor = 1.0
-    for yr in range(config.start_age, age):
-        for (s, e), rate in config.smile_real_change.items():
+    for yr in range(START_AGE, age):
+        for (s, e), rate in SMILE_REAL_CHANGE.items():
             if s <= yr < e:
                 real_factor *= (1 + rate)
                 break
+    
+    base = BASE_EXPENSES if base_expenses is None else base_expenses
+    return base * real_factor
 
-    return config.base_expenses * real_factor
 
 def inflate(x, years):
     """
@@ -753,7 +715,8 @@ def run_simulation(scenario_label="Baseline"):
             # ── Step 1: Inflation-indexed values for this year ────────────────
             # Expenses use the real spending smile (no inflation).
             # SS inflates for COLA. Tax brackets inflate for bracket indexing.
-            expenses  = smile_expenses(age, config)
+            #expenses  = smile_expenses(age)
+            expenses  = smile_expenses(age, BASE_EXPENSES)
             ss        = inflate(SS_AMOUNT, i) if age >= SS_START_AGE else 0.0
             brackets, std = inflate_brackets(BASE_BRACKETS_2025, STD_DED_2025, i)
             ltcg_bkts, _ = inflate_brackets(LTCG_BRACKETS_2025, 0, i)

@@ -117,7 +117,7 @@ config = SimConfig(
 # =========================================================
 # SPENDING CURVE PREVIEW
 # =========================================================
-def preview_smile_curve():
+def preview_smile_curve(config):
     ages = list(range(START_AGE, END_AGE + 1))
     expenses = [sim.smile_expenses(age, config) for age in ages]
 

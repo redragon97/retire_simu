@@ -85,6 +85,35 @@ st.sidebar.header("Healthcare")
 USE_ACA_SUBSIDY = st.sidebar.checkbox("Use ACA Subsidy", value=True)
 BENCHMARK_PREMIUM = st.sidebar.number_input("ACA Premium", value=18_000)
 
+config = SimConfig(
+    start_age=START_AGE,
+    end_age=END_AGE,
+
+    cash_start=CASH_START,
+    taxable_start=TAXABLE_START,
+    ira_start=IRA_START,
+    roth_start=ROTH_START,
+
+    mean_return=MEAN_RETURN,
+    vol_return=VOL_RETURN,
+    div_yield=DIV_YIELD,
+
+    base_expenses=BASE_EXPENSES,
+    inflation=INFLATION,
+    smile_real_change=SMILE_REAL_CHANGE,
+
+    marginal_stop=MARGINAL_STOP,
+
+    ss_start_age=SS_START_AGE,
+    ss_amount=SS_AMOUNT,
+
+    use_aca_subsidy=True,   # default
+    benchmark_premium=BENCHMARK_PREMIUM,
+
+    sims=SIMS,
+    seed=SEED
+)
+
 # =========================================================
 # SPENDING CURVE PREVIEW
 # =========================================================
@@ -109,7 +138,7 @@ def preview_smile_curve():
     )
     return fig
 
-st.plotly_chart(preview_smile_curve(), width='stretch')
+st.plotly_chart(preview_smile_curve(config), width='stretch')
 
 def build_summary(df):
     summary = df.groupby("Age")["Portfolio"].agg(
@@ -171,11 +200,13 @@ if st.button("🚀 Run Simulation"):
     # =====================================================
     # RUN BOTH SCENARIOS
     # =====================================================
-    sim.USE_ACA_SUBSIDY = True
-    df_a = run_simulation("Subsidized ACA")
+    config_a = config
+    config_a.use_aca_subsidy = True
+    df_a = run_simulation(config_a, "Subsidized ACA")
 
-    sim.USE_ACA_SUBSIDY = False
-    df_b = run_simulation("No ACA Subsidy")
+    config_b = SimConfig(**vars(config))
+    config_b.use_aca_subsidy = False
+    df_b = run_simulation(config_b, "No ACA Subsidy")
 
     # =====================================================
     # SUMMARY

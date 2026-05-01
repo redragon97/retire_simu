@@ -520,7 +520,7 @@ def calc_niit(ltcg, dividends, magi):
 # SECTION 12 — ROTH CONVERSION OPTIMIZER
 # =============================================================================
 
-def optimal_roth_conversion(rmd_ord_div, ss, ltcg_fixed, ira_balance,
+def optimal_roth_conversion(rmd_ord_div, ord_div, ss, ltcg_fixed, ira_balance,
                              age, brackets, std_ded, ltcg_brackets,
                              use_aca_subsidy=None, irmaa_lookback_magi=0.0):
     """
@@ -574,6 +574,7 @@ def optimal_roth_conversion(rmd_ord_div, ss, ltcg_fixed, ira_balance,
 
     Parameters:
         rmd_ord_div     — RMDs + ordinary dividends (non-SS, non-conversion income)
+        ord_div         - ordinary dividends for NIIT calculation
         ss              — full Social Security benefit this year (0 if not yet started)
         ltcg_fixed      — capital gains + qualified dividends (fixed for this year)
         ira_balance     — current IRA balance (conversion cannot exceed this)
@@ -609,7 +610,7 @@ def optimal_roth_conversion(rmd_ord_div, ss, ltcg_fixed, ira_balance,
         # exposing existing NII (ltcg_fixed) to 3.8%.
         # niit = calc_niit(ltcg_fixed, 0.0, magi)
         # Pass ord_div alongside ltcg_fixed
-        niit = calc_niit(ltcg_fixed, ord_div_estimate, magi)
+        niit = calc_niit(ltcg_fixed, ord_div, magi)
 
         if age >= MEDICARE_AGE:
             # Use the 2-year lookback MAGI for IRMAA (SSA rule),
@@ -776,7 +777,7 @@ def run_simulation(scenario_label="Baseline"):
                 irmaa_opt_magi = magi_history[i - 2] if i >= 2 else 0.0
                 roth_conv = min(
                     optimal_roth_conversion(
-                        rmd_ord_div, ss, expected_ltcg, ira,
+                        rmd_ord_div, ord_div, ss, expected_ltcg, ira,
                         age, brackets, std, ltcg_bkts,
                         irmaa_lookback_magi=irmaa_opt_magi,
                     ),

@@ -604,7 +604,8 @@ def optimal_roth_conversion(rmd_ord_div, ord_div, ss, ltcg_fixed, ira_balance,
         fed += calc_ltcg_tax(ltcg_fixed, ordinary, std_ded, ltcg_brackets)
         # Include Virginia tax so the stop threshold reflects the combined
         # federal + state marginal rate (22% fed + 5.75% VA = 27.75%)
-        va   = calc_va_tax(ordinary + ltcg_fixed)
+        # All SS benefits are exempted from VA taxes
+        va   = calc_va_tax(ordinary + ltcg_fixed - ss_tax)
         magi = ordinary + ltcg_fixed
         # NIIT: Roth conversion is not NII, but pushes MAGI over $250k,
         # exposing existing NII (ltcg_fixed) to 3.8%.

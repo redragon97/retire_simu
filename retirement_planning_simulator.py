@@ -286,7 +286,7 @@ RMD_TABLE = {                      # IRS Uniform Lifetime Table (SECURE 2.0)
 # VA brackets are NOT inflation-indexed (fixed thresholds every year).
 # Social Security is fully exempt from Virginia income tax.
 # LTCG is taxed as ordinary income in Virginia (no preferential rate).
-VA_STD_DED_MFJ = 18_000
+VA_STD_DED_MFJ = 17_500
 VA_BRACKETS = [
     (0,       0.0200),
     (3_000,   0.0300),

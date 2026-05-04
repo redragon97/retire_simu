@@ -467,6 +467,9 @@ def aca_net_premium(magi):
     each additional dollar of conversion raises MAGI by $1 and the premium
     by $0.085 — on top of the income tax rate.  This is why converting while
     receiving ACA subsidies is more expensive than converting after Medicare.
+
+    Model assumes flat 8.5% ACA contribution; this overestimates premiums 
+    at low income levels and slightly understates optimal Roth conversions early.
     """
     if magi <= ACA_FPL_2:
         return 0.0

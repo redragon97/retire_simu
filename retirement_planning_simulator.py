@@ -586,6 +586,10 @@ def optimal_roth_conversion(rmd_ord_div, ord_div, ss, ltcg_fixed, ira_balance,
         irmaa_lookback_magi  — MAGI from 2 years prior for IRMAA computation
                                (0.0 for pre-Medicare ages, ignored by ACA formula)
     """
+    # No Roth conversion after RMD age
+    if age >= RMD_START_AGE:
+        return 0.0            
+      
     aca_subsidy = USE_ACA_SUBSIDY if use_aca_subsidy is None else use_aca_subsidy
 
     def total_cost(conv):

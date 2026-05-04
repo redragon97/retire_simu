@@ -155,7 +155,6 @@ SMILE_REAL_CHANGE = {
 # INFLATION is used ONLY for two purposes:
 #   (a) indexing federal and Virginia tax brackets upward each year — this
 #       correctly models "bracket creep" where brackets erode in real terms
-#   (b) growing Social Security benefits for COLA
 #
 # It is NOT applied to living expenses (see Section 4 above) because the
 # portfolio return (MEAN_RETURN) is already a real (inflation-adjusted) figure.
@@ -430,7 +429,8 @@ def calc_va_tax(income):
 def calc_ss_taxable(ss, other_income):
     """
     Determine the taxable portion of Social Security benefits using the
-    IRS provisional income test (MFJ thresholds).
+    IRS provisional income test (MFJ thresholds). 
+    IRS provisional-income thresholds are NOT inflation-indexed
 
     Provisional income = other_income + 50% of SS benefits.
       Below $32,000:  0% of SS is taxable
@@ -721,7 +721,6 @@ def run_simulation(scenario_label="Baseline"):
             # SS inflates for COLA. Tax brackets inflate for bracket indexing.
             #expenses  = smile_expenses(age)
             expenses  = smile_expenses(age, BASE_EXPENSES)
-            #ss        = inflate(SS_AMOUNT, i) if age >= SS_START_AGE else 0.0
             ss = SS_AMOUNT if age >= SS_START_AGE else 0.0
             brackets, std = inflate_brackets(BASE_BRACKETS_2025, STD_DED_2025, i)
             ltcg_bkts, _ = inflate_brackets(LTCG_BRACKETS_2025, 0, i)

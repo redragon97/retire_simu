@@ -481,23 +481,23 @@ def irmaa_surcharge(magi):
     These are assessed on income from two years prior (IRMAA lookback).
 
     Thresholds are for MFJ (2025 values, not inflation-adjusted in model):
-      ≤ $206k : no surcharge
-      $206k–$258k : +$2,000/yr (couple)
-      $258k–$322k : +$4,000/yr
-      $322k–$386k : +$6,400/yr
-      $386k–$750k : +$11,200/yr
+      ≤ $212k : no surcharge
+      $212k–$266k : +$2,000/yr (couple)
+      $266k–$334k : +$4,000/yr
+      $334k–$400k : +$6,400/yr
+      $400k–$750k : +$11,200/yr
       > $750k     : +$11,200/yr (capped)
     """
     for threshold, surcharge in [
-        (206_000,  0),
-        (258_000,  2_000),
-        (322_000,  4_000),
-        (386_000,  6_400),
-        (750_000, 11_200),
+        (212_000,  0),
+        (266_000,  2_200),
+        (334_000,  4_800),
+        (400_000,  7_500),
+        (750_000, 10_100),
     ]:
         if magi <= threshold:
             return surcharge
-    return 11_200
+    return 12_800
 
 
 def calc_niit(ltcg, dividends, magi):
@@ -950,6 +950,7 @@ def run_simulation(scenario_label="Baseline"):
                 # Tax outputs
                 "Fed Tax":       fed_tax,
                 "VA Tax":        va_tax,
+                "NIIT":          niit,                 
                 "Tax":           total_tax,
                 "Health":        health,
                 # Spending

@@ -721,7 +721,8 @@ def run_simulation(scenario_label="Baseline"):
             # SS inflates for COLA. Tax brackets inflate for bracket indexing.
             #expenses  = smile_expenses(age)
             expenses  = smile_expenses(age, BASE_EXPENSES)
-            ss        = inflate(SS_AMOUNT, i) if age >= SS_START_AGE else 0.0
+            #ss        = inflate(SS_AMOUNT, i) if age >= SS_START_AGE else 0.0
+            ss = SS_AMOUNT if age >= SS_START_AGE else 0.0
             brackets, std = inflate_brackets(BASE_BRACKETS_2025, STD_DED_2025, i)
             ltcg_bkts, _ = inflate_brackets(LTCG_BRACKETS_2025, 0, i)
 

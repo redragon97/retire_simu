@@ -237,7 +237,7 @@ MEDICARE_BASE     = 6_000     # approximate base Medicare Part B+D (couple/year)
 NIIT_RATE          = 0.038
 NIIT_THRESHOLD_MFJ = 250_000   # nominal dollars, not inflation-adjusted
 
-USE_ACA_SUBSIDY   = True      # True = subsidized ACA;  False = full-price ACA
+USE_ACA_SUBSIDY   = False     # True = subsidized ACA;  False = full-price ACA
                               # This global is overridden in main() for each scenario
 
 

@@ -1271,13 +1271,12 @@ def chart5_grid(grid_df):
     path = os.path.abspath("chart5_grid_analysis.png")
     try:
         plt.savefig(path, dpi=150, bbox_inches='tight')
+		save_chart(fig, "chart5_grid.png", 5)
         print(f"Chart 5 (grid analysis) saved: {path}")
     except Exception as e:
         print(f"Chart 5 FAILED: {e}")
     finally:
-		plt.tight_layout()
-		save_chart(fig, "chart5_grid.png", 5)
-        #plt.close(fig)
+        plt.close(fig)
 
 
 def _run_grid_analysis():

@@ -329,7 +329,7 @@ def optimal_roth_conversion(rmd_ord_div, ord_div, ss, ltcg_fixed, ira_balance,
     """
     # No Roth conversion after RMD age
     if age >= RMD_START_AGE:
-        return 0.0            
+        return 0.0
 
     aca_subsidy = USE_ACA_SUBSIDY if use_aca_subsidy is None else use_aca_subsidy
 
@@ -1108,6 +1108,240 @@ def print_comparison(df_med_a, sum_a, label_a, df_med_b, sum_b, label_b):
 # =============================================================================
 
 # =============================================================================
+# =============================================================================
+# SECTION 19 — CHART 5: GRID ANALYSIS
+# =============================================================================
+
+def chart5_grid(grid_df):
+    """
+    Six-panel grid analysis chart showing how Roth conversion effectiveness
+    varies across different starting IRA and taxable account balances.
+
+    Panels:
+      1 — Total Roth conversions ($M) by IRA size, colored by taxable balance
+      2 — Portfolio survival rate at END_AGE (heatmap, green=high)
+      3 — Terminal portfolio at END_AGE ($M) by IRA size
+      4 — Total RMD tax paid ages 75+ ($M, heatmap, red=high)
+      5 — Whether IRA is fully converted before RMDs at 75 (green/red)
+      6 — Lifetime tax + healthcare ($M) by IRA size
+
+    Parameters:
+        grid_df  — DataFrame with one row per (taxable, ira) cell containing:
+                   total_conv, terminal_port, total_rmd_tax,
+                   total_tax_health, survival_pct, ira_depleted
+    """
+    import matplotlib.colors as mcolors
+
+    tax_vals = sorted(grid_df['taxable'].unique())
+    ira_vals = sorted(grid_df['ira'].unique())
+    ira_labels = [f"${v//1_000_000}M" for v in ira_vals]
+    tax_labels = [f"${v//1_000_000}M" for v in tax_vals]
+
+    def make_pivot(col, scale=1.0):
+        """Return a pivot table indexed by IRA label, columns by taxable label."""
+        d = grid_df.copy()
+        p = d.pivot(index='ira', columns='taxable', values=col) / scale
+        p.index   = [f"${v//1_000_000}M" for v in p.index]
+        p.columns = [f"${v//1_000_000}M" for v in p.columns]
+        return p
+
+    pv_conv    = make_pivot('total_conv',       1_000_000)
+    pv_surv    = make_pivot('survival_pct')
+    pv_port    = make_pivot('terminal_port',    1_000_000)
+    pv_rmd     = make_pivot('total_rmd_tax',    1_000_000)
+    pv_deplete = make_pivot('ira_depleted')
+    pv_tth     = make_pivot('total_tax_health', 1_000_000)
+
+    line_colors  = [C_BLUE, C_GREEN, C_RED, C_ORANGE]
+    line_markers = ['o', 's', '^', 'D']
+
+    fig = plt.figure(figsize=(18, 20))
+    fig.patch.set_facecolor('#F8F9FA')
+    gs = GridSpec(3, 2, figure=fig, hspace=0.46, wspace=0.35)
+    axes = [fig.add_subplot(gs[r, c]) for r in range(3) for c in range(2)]
+    for ax in axes:
+        ax.set_facecolor('#F8F9FA')
+
+    def gridlines(ax):
+        ax.grid(True, color=GRID_CLR, linestyle='--', linewidth=0.6, alpha=0.7)
+        ax.set_axisbelow(True)
+
+    # ── Panel 1: Total Roth conversions (line chart) ──────────────────────────
+    ax = axes[0]
+    for tax, color, marker in zip(tax_labels, line_colors, line_markers):
+        if tax in pv_conv.columns:
+            ax.plot(ira_labels, pv_conv[tax].values,
+                    color=color, lw=2.0, marker=marker, ms=7,
+                    label=f"Taxable {tax}")
+    ax.set_title("Total Roth Conversions (Median Path)", fontsize=11, fontweight='bold')
+    ax.set_xlabel("Starting IRA Balance"); ax.set_ylabel("Total Conversions ($M)")
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"${x:.1f}M"))
+    ax.legend(fontsize=9); gridlines(ax)
+
+    # ── Panel 2: Survival rate (heatmap) ─────────────────────────────────────
+    ax = axes[1]
+    im = ax.imshow(pv_surv.values, cmap=plt.cm.RdYlGn,
+                   vmin=0, vmax=100, aspect='auto')
+    ax.set_xticks(range(len(tax_labels))); ax.set_xticklabels(tax_labels)
+    ax.set_yticks(range(len(ira_labels))); ax.set_yticklabels(ira_labels)
+    ax.set_xlabel("Taxable Account"); ax.set_ylabel("IRA Balance")
+    ax.set_title(f"Portfolio Survival Rate at Age {END_AGE} (%)",
+                 fontsize=11, fontweight='bold')
+    for i, ilab in enumerate(ira_labels):
+        for j, tlab in enumerate(tax_labels):
+            val = pv_surv.loc[ilab, tlab]
+            ax.text(j, i, f"{val:.0f}%", ha='center', va='center',
+                    fontsize=9, fontweight='bold',
+                    color='white' if (val < 35 or val > 80) else '#222')
+    plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+    # ── Panel 3: Terminal portfolio (line chart) ───────────────────────────────
+    ax = axes[2]
+    for tax, color, marker in zip(tax_labels, line_colors, line_markers):
+        if tax in pv_port.columns:
+            ax.plot(ira_labels, pv_port[tax].values,
+                    color=color, lw=2.0, marker=marker, ms=7,
+                    label=f"Taxable {tax}")
+    ax.set_title(f"Terminal Portfolio at Age {END_AGE} (Median Path)",
+                 fontsize=11, fontweight='bold')
+    ax.set_xlabel("Starting IRA Balance"); ax.set_ylabel("Terminal Portfolio ($M)")
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"${x:.0f}M"))
+    ax.legend(fontsize=9); gridlines(ax)
+
+    # ── Panel 4: Total RMD tax (heatmap) ─────────────────────────────────────
+    ax = axes[3]
+    im2 = ax.imshow(pv_rmd.values, cmap=plt.cm.YlOrRd, aspect='auto')
+    ax.set_xticks(range(len(tax_labels))); ax.set_xticklabels(tax_labels)
+    ax.set_yticks(range(len(ira_labels))); ax.set_yticklabels(ira_labels)
+    ax.set_xlabel("Taxable Account"); ax.set_ylabel("IRA Balance")
+    ax.set_title("Total RMD Tax Paid — Ages 75+ (Median Path)",
+                 fontsize=11, fontweight='bold')
+    max_rmd = pv_rmd.values.max() if pv_rmd.values.max() > 0 else 1.0
+    for i, ilab in enumerate(ira_labels):
+        for j, tlab in enumerate(tax_labels):
+            val = pv_rmd.loc[ilab, tlab]
+            ax.text(j, i, f"${val:.1f}M", ha='center', va='center',
+                    fontsize=8.5, fontweight='bold',
+                    color='white' if val > max_rmd * 0.6 else '#222')
+    plt.colorbar(im2, ax=ax, fraction=0.046, pad=0.04)
+
+    # ── Panel 5: IRA depleted before RMDs (green/red heatmap) ────────────────
+    ax = axes[4]
+    cmap_dep = mcolors.ListedColormap(['#C0504D', '#2E7D32'])
+    ax.imshow(pv_deplete.values.astype(float),
+              cmap=cmap_dep, vmin=0, vmax=1, aspect='auto')
+    ax.set_xticks(range(len(tax_labels))); ax.set_xticklabels(tax_labels)
+    ax.set_yticks(range(len(ira_labels))); ax.set_yticklabels(ira_labels)
+    ax.set_xlabel("Taxable Account"); ax.set_ylabel("IRA Balance")
+    ax.set_title(f"IRA Fully Converted Before RMDs at {RMD_START_AGE}?",
+                 fontsize=11, fontweight='bold')
+    for i, ilab in enumerate(ira_labels):
+        for j, tlab in enumerate(tax_labels):
+            depleted = bool(pv_deplete.loc[ilab, tlab])
+            ax.text(j, i, "YES ✓" if depleted else "NO ✗",
+                    ha='center', va='center', fontsize=9,
+                    fontweight='bold', color='white')
+    yes_p = mpatches.Patch(color='#2E7D32', label='YES — IRA depleted, no forced RMDs')
+    no_p  = mpatches.Patch(color='#C0504D', label='NO — RMD residual remains at 75')
+    ax.legend(handles=[yes_p, no_p], loc='upper center',
+              bbox_to_anchor=(0.5, -0.14), fontsize=8.5, ncol=2)
+
+    # ── Panel 6: Lifetime tax + healthcare (line chart) ───────────────────────
+    ax = axes[5]
+    for tax, color, marker in zip(tax_labels, line_colors, line_markers):
+        if tax in pv_tth.columns:
+            ax.plot(ira_labels, pv_tth[tax].values,
+                    color=color, lw=2.0, marker=marker, ms=7,
+                    label=f"Taxable {tax}")
+    ax.set_title("Lifetime Tax + Healthcare (Median Path)",
+                 fontsize=11, fontweight='bold')
+    ax.set_xlabel("Starting IRA Balance"); ax.set_ylabel("Lifetime Cost ($M)")
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"${x:.1f}M"))
+    ax.legend(fontsize=9); gridlines(ax)
+
+    aca_note = ("Original ACA 2026+ (400% FPL cliff)"
+                if not USE_ACA_SUBSIDY else "Enhanced ACA (expired 2025)")
+    fig.suptitle(
+        f"Roth Conversion Grid Analysis\n"
+        f"Taxable ${min(tax_vals)//1_000_000}M–${max(tax_vals)//1_000_000}M  ×  "
+        f"IRA ${min(ira_vals)//1_000_000}M–${max(ira_vals)//1_000_000}M  |  "
+        f"MARGINAL_STOP={MARGINAL_STOP:.0%}  |  {aca_note}  |  SIMS={GRID_SIMS}",
+        fontsize=12, fontweight='bold', y=0.995)
+
+    path = os.path.abspath("chart5_grid_analysis.png")
+    try:
+        plt.savefig(path, dpi=150, bbox_inches='tight')
+        print(f"Chart 5 (grid analysis) saved: {path}")
+    except Exception as e:
+        print(f"Chart 5 FAILED: {e}")
+    finally:
+        plt.close(fig)
+
+
+def _run_grid_analysis():
+    """
+    Sweep across GRID_TAXABLE × GRID_IRA combinations and return a
+    DataFrame of per-cell summary metrics. Called from main() when
+    RUN_GRID_ANALYSIS = True.
+
+    Temporarily overrides SIMS, IRA_START, and TAXABLE_START for each
+    cell then restores the original values on completion.
+    """
+    import time as _time
+
+    original_sims     = SIMS
+    original_ira      = IRA_START
+    original_taxable  = TAXABLE_START
+
+    n_cells = len(GRID_TAXABLE) * len(GRID_IRA)
+    print(f"\nGrid analysis: {len(GRID_TAXABLE)} taxable levels × "
+          f"{len(GRID_IRA)} IRA levels = {n_cells} cells × {GRID_SIMS} sims each...")
+
+    rows = []
+    t0 = _time.time()
+    for taxable in GRID_TAXABLE:
+        for ira in GRID_IRA:
+            globals()["SIMS"]          = GRID_SIMS
+            globals()["IRA_START"]     = ira
+            globals()["TAXABLE_START"] = taxable
+
+            df = run_simulation()
+
+            # Median path (stable sort excluding Roth — invariant to ROTH_START)
+            non_roth = (df.groupby("Sim")[["Portfolio", "Roth"]].last()
+                        .eval("NonRoth = Portfolio - Roth")["NonRoth"]
+                        .sort_values())
+            med_id = non_roth.index[len(non_roth) // 2]
+            med    = df[df["Sim"] == med_id].copy()
+
+            rows.append(dict(
+                taxable          = taxable,
+                ira              = ira,
+                total_conv       = med["Roth Conv"].sum(),
+                terminal_port    = med.iloc[-1]["Portfolio"],
+                terminal_ira     = med.iloc[-1]["IRA"],
+                terminal_roth    = med.iloc[-1]["Roth"],
+                total_rmd_tax    = med[med["Age"] >= RMD_START_AGE]["Tax"].sum(),
+                total_tax_health = med["Tax"].sum() + med["Health"].sum(),
+                survival_pct     = (df[df["Age"] == END_AGE]["Portfolio"] > 0).mean() * 100,
+                ira_depleted     = med.iloc[-1]["IRA"] < 10_000,
+            ))
+            r = rows[-1]
+            print(f"  Taxable=${taxable//1_000_000}M  IRA=${ira//1_000_000}M  "
+                  f"Conv=${r['total_conv']/1e6:4.1f}M  "
+                  f"Port=${r['terminal_port']/1e6:5.1f}M  "
+                  f"Surv={r['survival_pct']:4.1f}%  "
+                  f"{'✓ depleted' if r['ira_depleted'] else '○ RMDs remain':>12}")
+
+    # Restore original module-level values
+    globals()["SIMS"]          = original_sims
+    globals()["IRA_START"]     = original_ira
+    globals()["TAXABLE_START"] = original_taxable
+
+    print(f"Grid complete in {_time.time()-t0:.0f}s")
+    return pd.DataFrame(rows)
+
+
 # HELPERS for main()
 # =============================================================================
 
@@ -1247,6 +1481,9 @@ if __name__ == "__main__":
                 ("SCENARIO B", "Original ACA — 2026+ rules (400% FPL cliff)"),
             ] + base_params,
         )
+        if RUN_GRID_ANALYSIS:
+            grid_df = _run_grid_analysis()
+            chart5_grid(grid_df)
 
     # ──────────────────────────────────────────────────────────────────────────
     elif SCENARIO_MODE == "single_enhanced":
@@ -1266,6 +1503,9 @@ if __name__ == "__main__":
             sheets=[("Summary", summary), ("Median Path", df_med)],
             params_rows=[("SCENARIO", label)] + base_params,
         )
+        if RUN_GRID_ANALYSIS:
+            grid_df = _run_grid_analysis()
+            chart5_grid(grid_df)
 
     # ──────────────────────────────────────────────────────────────────────────
     elif SCENARIO_MODE == "single_original":
@@ -1285,3 +1525,6 @@ if __name__ == "__main__":
             sheets=[("Summary", summary), ("Median Path", df_med)],
             params_rows=[("SCENARIO", label)] + base_params,
         )
+        if RUN_GRID_ANALYSIS:
+            grid_df = _run_grid_analysis()
+            chart5_grid(grid_df)

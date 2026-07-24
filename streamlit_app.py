@@ -324,29 +324,11 @@ if st.button("🚀 Run Simulation"):
     """)
 
     # ---------- Chart 5 ----------
-    st.write("### Chart 5 — Grid Map")
-    fig5 = chart5_grid(
-		df_b
-    )
-    st.pyplot(fig5)
-
-    st.markdown("""
-    **What this shows:**  
-    This chart compares two strategies: with ACA subsidies vs without subsidies.
-
-    **How to read it:**  
-    - Each line represents the median portfolio outcome under a different scenario.  
-    - The gap between lines shows the financial impact of ACA subsidies over time.  
-    - Divergence later in retirement reflects compounding effects.
-
-    **What to look for:**  
-    - How early differences grow over time  
-    - Whether one strategy consistently dominates  
-    - Sensitivity to tax and income decisions
-
-    **Why it matters:**  
-    This helps quantify the *real dollar impact* of healthcare and tax strategy decisions.
-    """)
+    #st.write("### Chart 5 — Grid Map")
+    #fig5 = chart5_grid(
+	#	df_b
+    #)
+    #st.pyplot(fig5)
 	
     # =====================================================
     # DOWNLOAD DATA

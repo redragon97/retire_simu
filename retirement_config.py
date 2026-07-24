@@ -250,3 +250,22 @@ C_TEAL   = "#006464"    # taxable account, cash
 C_CYAN   = "#17BECF"    # Roth withdrawals (tax-free)
 C_GRAY   = "#595959"    # milestone annotations
 GRID_CLR = "#CCCCCC"    # chart gridlines
+
+
+# =============================================================================
+# SECTION 11 — GRID ANALYSIS (optional, runs after main simulation)
+# =============================================================================
+# When RUN_GRID_ANALYSIS = True, the simulator runs an additional grid sweep
+# across multiple starting IRA and taxable account balances, then produces
+# chart5_grid_analysis.png showing where Roth conversion is most impactful.
+#
+# Note: this adds GRID_SIMS × len(GRID_TAXABLE) × len(GRID_IRA) simulations
+# on top of the main run. With defaults below: 500 × 4 × 6 = 12,000 extra sims
+# (~1-2 minutes). Reduce GRID_SIMS or the lists for faster runs.
+
+RUN_GRID_ANALYSIS = True
+
+GRID_SIMS    = 500   # sims per grid cell (fewer than main SIMS for speed)
+GRID_TAXABLE = [0, 1_000_000, 2_000_000, 3_000_000]   # taxable starting balances
+GRID_IRA     = [1_000_000, 2_000_000, 3_000_000,
+                4_000_000, 5_000_000, 6_000_000]        # IRA starting balances

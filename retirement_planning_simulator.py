@@ -330,7 +330,6 @@ def optimal_roth_conversion(rmd_ord_div, ord_div, ss, ltcg_fixed, ira_balance,
     # No Roth conversion after RMD age
     if age >= RMD_START_AGE:
         return 0.0
-
     aca_subsidy = USE_ACA_SUBSIDY if use_aca_subsidy is None else use_aca_subsidy
 
     def total_cost(conv):
@@ -1137,6 +1136,11 @@ def chart5_grid(grid_df):
     ira_labels = [f"${v//1_000_000}M" for v in ira_vals]
     tax_labels = [f"${v//1_000_000}M" for v in tax_vals]
 
+    def _fmt(v):
+        """Format a dollar value in millions, e.g. 500000 → '$0.5M', 1000000 → '$1M'."""
+        m = v / 1_000_000
+        return f"${m:.1f}M" if m != int(m) else f"${int(m)}M"
+
     def make_pivot(col, scale=1.0):
         """Return a pivot table indexed by IRA label, columns by taxable label."""
         d = grid_df.copy()
@@ -1168,11 +1172,11 @@ def chart5_grid(grid_df):
 
     # ── Panel 1: Total Roth conversions (line chart) ──────────────────────────
     ax = axes[0]
-    for tax, color, marker in zip(tax_labels, line_colors, line_markers):
-        if tax in pv_conv.columns:
-            ax.plot(ira_labels, pv_conv[tax].values,
-                    color=color, lw=2.0, marker=marker, ms=7,
-                    label=f"Taxable {tax}")
+    for j, (tax_val, color, marker) in enumerate(zip(tax_vals, line_colors, line_markers)):
+        tlab = _fmt(tax_val)
+        ax.plot(ira_labels, pv_conv.iloc[:, j].values,
+                color=color, lw=2.0, marker=marker, ms=7,
+                label=f"Taxable {tlab}")
     ax.set_title("Total Roth Conversions (Median Path)", fontsize=11, fontweight='bold')
     ax.set_xlabel("Starting IRA Balance"); ax.set_ylabel("Total Conversions ($M)")
     ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"${x:.1f}M"))
@@ -1187,9 +1191,9 @@ def chart5_grid(grid_df):
     ax.set_xlabel("Taxable Account"); ax.set_ylabel("IRA Balance")
     ax.set_title(f"Portfolio Survival Rate at Age {END_AGE} (%)",
                  fontsize=11, fontweight='bold')
-    for i, ilab in enumerate(ira_labels):
-        for j, tlab in enumerate(tax_labels):
-            val = pv_surv.loc[ilab, tlab]
+    for i in range(len(ira_vals)):
+        for j in range(len(tax_vals)):
+            val = float(pv_surv.iloc[i, j])
             ax.text(j, i, f"{val:.0f}%", ha='center', va='center',
                     fontsize=9, fontweight='bold',
                     color='white' if (val < 35 or val > 80) else '#222')
@@ -1197,11 +1201,11 @@ def chart5_grid(grid_df):
 
     # ── Panel 3: Terminal portfolio (line chart) ───────────────────────────────
     ax = axes[2]
-    for tax, color, marker in zip(tax_labels, line_colors, line_markers):
-        if tax in pv_port.columns:
-            ax.plot(ira_labels, pv_port[tax].values,
-                    color=color, lw=2.0, marker=marker, ms=7,
-                    label=f"Taxable {tax}")
+    for j, (tax_val, color, marker) in enumerate(zip(tax_vals, line_colors, line_markers)):
+        tlab = _fmt(tax_val)
+        ax.plot(ira_labels, pv_port.iloc[:, j].values,
+                color=color, lw=2.0, marker=marker, ms=7,
+                label=f"Taxable {tlab}")
     ax.set_title(f"Terminal Portfolio at Age {END_AGE} (Median Path)",
                  fontsize=11, fontweight='bold')
     ax.set_xlabel("Starting IRA Balance"); ax.set_ylabel("Terminal Portfolio ($M)")
@@ -1217,9 +1221,9 @@ def chart5_grid(grid_df):
     ax.set_title("Total RMD Tax Paid — Ages 75+ (Median Path)",
                  fontsize=11, fontweight='bold')
     max_rmd = pv_rmd.values.max() if pv_rmd.values.max() > 0 else 1.0
-    for i, ilab in enumerate(ira_labels):
-        for j, tlab in enumerate(tax_labels):
-            val = pv_rmd.loc[ilab, tlab]
+    for i in range(len(ira_vals)):
+        for j in range(len(tax_vals)):
+            val = float(pv_rmd.iloc[i, j])
             ax.text(j, i, f"${val:.1f}M", ha='center', va='center',
                     fontsize=8.5, fontweight='bold',
                     color='white' if val > max_rmd * 0.6 else '#222')
@@ -1235,9 +1239,9 @@ def chart5_grid(grid_df):
     ax.set_xlabel("Taxable Account"); ax.set_ylabel("IRA Balance")
     ax.set_title(f"IRA Fully Converted Before RMDs at {RMD_START_AGE}?",
                  fontsize=11, fontweight='bold')
-    for i, ilab in enumerate(ira_labels):
-        for j, tlab in enumerate(tax_labels):
-            depleted = bool(pv_deplete.loc[ilab, tlab])
+    for i in range(len(ira_vals)):
+        for j in range(len(tax_vals)):
+            depleted = bool(float(pv_deplete.iloc[i, j]))
             ax.text(j, i, "YES ✓" if depleted else "NO ✗",
                     ha='center', va='center', fontsize=9,
                     fontweight='bold', color='white')
@@ -1248,11 +1252,11 @@ def chart5_grid(grid_df):
 
     # ── Panel 6: Lifetime tax + healthcare (line chart) ───────────────────────
     ax = axes[5]
-    for tax, color, marker in zip(tax_labels, line_colors, line_markers):
-        if tax in pv_tth.columns:
-            ax.plot(ira_labels, pv_tth[tax].values,
-                    color=color, lw=2.0, marker=marker, ms=7,
-                    label=f"Taxable {tax}")
+    for j, (tax_val, color, marker) in enumerate(zip(tax_vals, line_colors, line_markers)):
+        tlab = _fmt(tax_val)
+        ax.plot(ira_labels, pv_tth.iloc[:, j].values,
+                color=color, lw=2.0, marker=marker, ms=7,
+                label=f"Taxable {tlab}")
     ax.set_title("Lifetime Tax + Healthcare (Median Path)",
                  fontsize=11, fontweight='bold')
     ax.set_xlabel("Starting IRA Balance"); ax.set_ylabel("Lifetime Cost ($M)")
@@ -1271,12 +1275,13 @@ def chart5_grid(grid_df):
     path = os.path.abspath("chart5_grid_analysis.png")
     try:
         plt.savefig(path, dpi=150, bbox_inches='tight')
-        save_chart(fig, "chart5_grid.png", 5)
+        ave_chart(fig, "chart5_grid.png", 5)								 
         print(f"Chart 5 (grid analysis) saved: {path}")
     except Exception as e:
         print(f"Chart 5 FAILED: {e}")
     finally:
         plt.close(fig)
+    return fig
 
 
 def _run_grid_analysis():

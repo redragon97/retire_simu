@@ -327,9 +327,6 @@ def optimal_roth_conversion(rmd_ord_div, ord_div, ss, ltcg_fixed, ira_balance,
         irmaa_lookback_magi  — MAGI from 2 years prior for IRMAA computation
                                (0.0 for pre-Medicare ages, ignored by ACA formula)
     """
-    # No Roth conversion after RMD age
-    if age >= RMD_START_AGE:
-        return 0.0
     aca_subsidy = USE_ACA_SUBSIDY if use_aca_subsidy is None else use_aca_subsidy
 
     def total_cost(conv):
@@ -521,7 +518,7 @@ def run_simulation(scenario_label="Baseline"):
                 # Pass the 2-year lookback MAGI so the optimizer uses
                 # the correct IRMAA tier when deciding how much to convert.
                 irmaa_opt_magi = magi_history[i - 2] if i >= 2 else 0.0
-                roth_conv = min(
+                raw_conv = min(
                     optimal_roth_conversion(
                         rmd_ord_div, ord_div, ss, expected_ltcg, ira,
                         age, brackets, std, ltcg_bkts,
@@ -529,6 +526,66 @@ def run_simulation(scenario_label="Baseline"):
                     ),
                     ira,
                 )  # uses global USE_ACA_SUBSIDY
+
+                # ── Tax-capacity cap ─────────────────────────────────────────
+                # The optimizer assumes conversion tax is paid from cash or
+                # taxable assets held outside the IRA. When those are gone,
+                # the IRA must fund its own tax bill — a recursive tax-on-tax
+                # loop where drawing IRA to pay tax generates more tax, requiring
+                # more IRA draws. This inflates the effective cost well above
+                # MARGINAL_STOP and produces unrealistically large IRA withdrawals.
+                #
+                # When non-IRA liquid assets (cash + taxable) are insufficient
+                # to cover the estimated tax bill, binary-search for the largest
+                # conversion whose tax can actually be funded without the IRA.
+                # Non-IRA sources that can fund the tax bill without
+                # creating recursive additional tax:
+                #   cash    — no tax impact
+                #   taxable — generates LTCG but handled in step 8 iteration
+                #   roth    — tax-free withdrawals, no income generated
+                # IRA draws to fund taxes generate MORE taxable income,
+                # creating the recursive tax-on-tax loop we want to prevent.
+                non_ira_liquid = cash + taxable + roth   # available BEFORE step 5
+                if raw_conv > 0:
+                    # Estimate tax on the raw conversion amount
+                    ss_t_est   = calc_ss_taxable(ss, rmd_ord_div + raw_conv + expected_ltcg)
+                    ord_est    = rmd_ord_div + raw_conv + ss_t_est
+                    magi_est   = ord_est + expected_ltcg
+                    fed_est    = (calc_ordinary_tax(ord_est, brackets, std)
+                                  + calc_ltcg_tax(expected_ltcg, ord_est, std, ltcg_bkts))
+                    va_est     = calc_va_tax(ord_est + expected_ltcg - ss_t_est)
+                    niit_est   = calc_niit(expected_ltcg, ord_div, magi_est)
+                    h_est      = (MEDICARE_BASE + irmaa_surcharge(irmaa_opt_magi)
+                                  if age >= MEDICARE_AGE else aca_net_premium(magi_est))
+                    tax_est    = fed_est + va_est + niit_est + h_est
+                    # Cash also needs to cover living expenses after SS
+                    needed     = max(0.0, smile_expenses(age) - ss) + tax_est
+
+                    if non_ira_liquid < needed:
+                        # Binary-search: largest conversion coverable by non-IRA assets
+                        lo, hi = 0, raw_conv
+                        for _ in range(20):
+                            mid = (lo + hi) // 1_000 * 1_000
+                            if mid == lo:
+                                break
+                            ss_t   = calc_ss_taxable(ss, rmd_ord_div + mid + expected_ltcg)
+                            ord_m  = rmd_ord_div + mid + ss_t
+                            magi_m = ord_m + expected_ltcg
+                            fed_m  = (calc_ordinary_tax(ord_m, brackets, std)
+                                      + calc_ltcg_tax(expected_ltcg, ord_m, std, ltcg_bkts))
+                            va_m   = calc_va_tax(ord_m + expected_ltcg - ss_t)
+                            niit_m = calc_niit(expected_ltcg, ord_div, magi_m)
+                            h_m    = (MEDICARE_BASE + irmaa_surcharge(irmaa_opt_magi)
+                                      if age >= MEDICARE_AGE else aca_net_premium(magi_m))
+                            tax_m  = fed_m + va_m + niit_m + h_m
+                            need_m = max(0.0, smile_expenses(age) - ss) + tax_m
+                            if non_ira_liquid >= need_m:
+                                lo = mid
+                            else:
+                                hi = mid
+                        raw_conv = lo
+
+                roth_conv = raw_conv
                 ira  -= roth_conv   # moved out of pre-tax IRA
                 roth += roth_conv   # landed in tax-free Roth (taxes paid separately)
 
@@ -566,8 +623,9 @@ def run_simulation(scenario_label="Baseline"):
             #   extra_ira_wd — additional IRA drawn in step 8 (beyond step 5)
             # These are added to the step 5 amounts when recording the final row.
 
-            extra_sold   = 0.0   # extra taxable sold to cover tax shortfall
-            extra_ira_wd = 0.0   # extra IRA drawn to cover tax shortfall
+            extra_sold     = 0.0   # extra taxable sold to cover tax shortfall
+            extra_ira_wd   = 0.0   # extra IRA drawn to cover tax shortfall
+            new_extra_roth = 0.0   # extra Roth drawn tax-free to pay taxes
 
             for _iter in range(15):
 
@@ -624,7 +682,10 @@ def run_simulation(scenario_label="Baseline"):
                     cash -= cash_used
                     break
 
-                # Fill shortfall: taxable → IRA → Roth
+                # Fill shortfall: taxable → Roth → IRA
+                # Roth is used BEFORE IRA for tax payments because Roth WDs are
+                # tax-free — they add no ordinary income, breaking the recursive
+                # loop where IRA draws generate more tax requiring more IRA draws.
                 new_extra_sold   = min(taxable, shortfall)
                 if new_extra_sold > extra_sold and taxable > 0:   # incremental sale this iter
                     inc = new_extra_sold - extra_sold
@@ -632,10 +693,10 @@ def run_simulation(scenario_label="Baseline"):
                     ltcg_from_sold += inc * gain_frac_8            # accumulate LTCG
                     taxable_basis  -= (inc / taxable) * taxable_basis
                 shortfall       -= new_extra_sold
-                new_extra_ira_wd = min(ira - extra_ira_wd, shortfall)  # don't exceed IRA balance
-                shortfall       -= new_extra_ira_wd
-                new_extra_roth   = min(roth, shortfall)   # last resort
+                new_extra_roth   = min(roth, shortfall)   # tax-free — preferred over IRA
                 shortfall       -= new_extra_roth
+                new_extra_ira_wd = min(ira - extra_ira_wd, shortfall)  # last resort
+                shortfall       -= new_extra_ira_wd
 
                 # Check convergence: did the extra sales change from last iteration?
                 if (abs(new_extra_sold   - extra_sold)   < 1.0 and
@@ -645,8 +706,8 @@ def run_simulation(scenario_label="Baseline"):
                     extra_ira_wd  = new_extra_ira_wd
                     cash         -= cash_used
                     taxable      -= extra_sold
-                    ira          -= extra_ira_wd
-                    roth         -= new_extra_roth
+                    roth         -= new_extra_roth   # tax-free; drawn before IRA
+                    ira          -= extra_ira_wd     # last resort; only if Roth exhausted
                     break
 
                 extra_sold   = new_extra_sold
@@ -655,6 +716,7 @@ def run_simulation(scenario_label="Baseline"):
             # Update the step-5 totals so the recorded row reflects everything
             sold_tax  += extra_sold    # total taxable sold this year (steps 5 + 8)
             ira_wd    += extra_ira_wd  # total IRA withdrawn this year (steps 5 + 8)
+            roth_wd   += new_extra_roth  # step-8 Roth drawn tax-free to pay taxes
             magi_history[i] = magi     # record for IRMAA lookback
 
 
@@ -806,7 +868,7 @@ def chart1_fan(summary):
 
     # subplots_adjust avoids the tight_layout / twinx incompatibility
     fig.subplots_adjust(left=0.08, right=0.88, top=0.92, bottom=0.08)
-    save_chart(fig, "chart1_montecarlo.png", 1)
+    #save_chart(fig, "chart1_montecarlo.png", 1)
     return fig
 
 
@@ -914,7 +976,7 @@ def chart2_median(df_med, filename="chart2_median_detail.png", subtitle="Median 
     ax3r.legend(handles=bar_h+[l1,l2], loc="upper right", fontsize=8, framealpha=0.9)
     grid(ax3); ax3.set_xlim(START_AGE-0.5, END_AGE+0.5); add_milestones(ax3)
 
-    save_chart(fig, filename, "2")
+    #save_chart(fig, filename, "2")
     return fig
 
 
@@ -969,7 +1031,7 @@ def chart3_paths(df):
     ax_t.legend(fontsize=9); grid(ax_t)
 
     plt.tight_layout()
-    save_chart(fig, "chart3_percentile_paths.png", 3)
+    #save_chart(fig, "chart3_percentile_paths.png", 3)
     return fig
 
 
@@ -1054,7 +1116,7 @@ def chart4_comparison(df_a, df_b, sum_a, sum_b, label_a, label_b):
     ax.set_xlim(START_AGE-0.5, END_AGE+0.5)
 
     plt.tight_layout()
-    save_chart(fig, "chart4_comparison.png", 4)
+    #save_chart(fig, "chart4_comparison.png", 4)
     return fig
 
 
@@ -1275,7 +1337,6 @@ def chart5_grid(grid_df):
     path = os.path.abspath("chart5_grid_analysis.png")
     try:
         plt.savefig(path, dpi=150, bbox_inches='tight')
-        ave_chart(fig, "chart5_grid.png", 5)								 
         print(f"Chart 5 (grid analysis) saved: {path}")
     except Exception as e:
         print(f"Chart 5 FAILED: {e}")

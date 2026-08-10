@@ -607,119 +607,114 @@ def run_simulation(scenario_label="Baseline"):
             roth_wd   = min(roth, needed);    roth    -= roth_wd
             # If needed > 0 after Roth, the household is insolvent (all accounts empty)
 
-            # ── Steps 6–8: Compute taxes, healthcare, and pay — iteratively ──────
+            # ── Steps 6–8: Compute tax, healthcare, and pay ─────────────────
             #
-            # Steps 6, 7, and 8 are combined into a single iterative loop
-            # because they are mutually dependent:
-            #   - Selling taxable in step 8 generates LTCG → changes tax bill
-            #   - Drawing IRA in step 8 is ordinary income → changes tax + SS taxable
-            #   - More tax → may require more sales → more LTCG → more tax ...
+            # IRS RULE (IRC §3405, IRS Pub 590-B):
+            # A Traditional IRA withdrawal has ONE taxable event — the GROSS
+            # withdrawal is ordinary income. The portion withheld/paid to the IRS
+            # as tax is NOT a second taxable event. There is no tax-on-tax loop.
             #
-            # The iteration converges in 3–5 steps because each marginal sale
-            # generates tax at a rate < 100%, so the series is contracting.
-            #
-            # Variables accumulated across iterations:
-            #   extra_sold   — additional taxable sold in step 8 (beyond step 5)
-            #   extra_ira_wd — additional IRA drawn in step 8 (beyond step 5)
-            # These are added to the step 5 amounts when recording the final row.
+            # Correct model:
+            #   Step 6: Compute tax on all income recognized THIS year:
+            #           roth_conv, SS taxable, dividends, LTCG from taxable sales.
+            #           IRA draws to fund the tax bill are the same gross-up event
+            #           and do NOT add to MAGI or create additional tax.
+            #   Step 7: Healthcare cost.
+            #   Step 8: Pay total_due. One iteration pass handles the taxable-sale
+            #           LTCG feedback (extra sales → more LTCG → slightly more tax).
+            #           IRA and Roth draws for taxes require NO iteration.
 
-            extra_sold     = 0.0   # extra taxable sold to cover tax shortfall
-            extra_ira_wd   = 0.0   # extra IRA drawn to cover tax shortfall
-            new_extra_roth = 0.0   # extra Roth drawn tax-free to pay taxes
+            # Gain fraction for taxable account after step-5 sales
+            gain_frac      = ((taxable - taxable_basis) / taxable
+                              if taxable > 0 else 0.0)
+            # Accumulate LTCG from taxable sales (step 5 baseline; grows if step 8
+            # also requires taxable sales)
+            ltcg_from_sold = sold_tax * gain_frac
 
-            for _iter in range(15):
+            extra_sold     = 0.0   # additional taxable sold in step 8
+            new_extra_roth = 0.0   # Roth drawn tax-free to cover shortfall
 
-                # ── Step 6: Recompute tax on all income including step-8 sales ─
-                # Total taxable sales this year = step-5 amount + step-8 extra
-                total_sold  = sold_tax + extra_sold
-                # Total IRA withdrawal = step-5 amount + step-8 extra
-                total_ira_wd = ira_wd + extra_ira_wd
+            for _iter in range(8):
 
-                # Dynamic gain fraction based on current taxable account state.
-                # Computed once per iteration before any income aggregation.
-                gain_frac = ((taxable - taxable_basis) / taxable
-                             if taxable > 0 else 0.0)
-
-                # SS provisional income: include ALL non-SS income flowing through MAGI.
-                # Qualified dividends are LTCG-rate income but still part of AGI,
-                # so they count toward provisional income under IRS Publication 915.
-                other_for_ss   = (rmd + roth_conv + total_ira_wd + ord_div
-                                  + total_sold * gain_frac
-                                  + qual_div)
+                # ── Step 6: Recompute tax on all recognized income ────────────
+                # total_sold includes both step-5 and step-8 extra taxable sales
+                # (step-8 extra sales generate LTCG → need iteration)
+                current_ltcg   = ltcg_from_sold   # accumulates via gain_frac_8 below
+                other_for_ss   = (rmd + roth_conv + ira_wd + ord_div
+                                  + current_ltcg + qual_div)
                 ss_taxable     = calc_ss_taxable(ss, other_for_ss)
-
-                ordinary_gross = rmd + roth_conv + total_ira_wd + ss_taxable + ord_div
-                ltcg           = ltcg_from_sold + qual_div   # dynamic: actual gain from sales
+                ordinary_gross = rmd + roth_conv + ira_wd + ss_taxable + ord_div
+                ltcg           = current_ltcg + qual_div
                 magi           = ordinary_gross + ltcg
 
                 fed_tax  = calc_ordinary_tax(ordinary_gross, brackets, std)
                 fed_tax += calc_ltcg_tax(ltcg, ordinary_gross, std, ltcg_bkts)
-                # NIIT (IRC §1411): 3.8% on NII when MAGI > $250k.
-                # NII = LTCG + all dividends (not IRA/RMD/SS).
-                # NIIT: NII = LTCG (includes qual_div gains) + all dividends
-                # NII = ltcg_from_sold + qual_div + ord_div = all investment income.
-                # niit     = calc_niit(ltcg, ord_div + qual_div, magi)
                 niit     = calc_niit(ltcg, ord_div, magi)
-                va_tax   = calc_va_tax(rmd + roth_conv + total_ira_wd + ord_div + ltcg)
+                va_tax   = calc_va_tax(rmd + roth_conv + ira_wd + ord_div + ltcg)
                 total_tax = fed_tax + niit + va_tax
 
                 # ── Step 7: Healthcare cost ────────────────────────────────────
+                irmaa_magi = magi_history[i - 2] if i >= 2 else 0.0
                 if age >= MEDICARE_AGE:
-                    irmaa_magi = magi_history[i - 2] if i >= 2 else 0.0
                     health = MEDICARE_BASE + irmaa_surcharge(irmaa_magi)
                 elif USE_ACA_SUBSIDY:
                     health = aca_net_premium(magi)
                 else:
                     health = BENCHMARK_PREMIUM
 
-                # ── Step 8: Pay — waterfall with convergence check ─────────────
-                due = total_tax + health
-                cash_used  = min(cash, due)
-                shortfall  = due - cash_used
+                # ── Step 8: Pay total_due ─────────────────────────────────────
+                due       = total_tax + health
+                cash_used = min(cash, due)
+                shortfall = due - cash_used
 
                 if shortfall < 0.01:
-                    # Cash covers the entire bill — no asset sales needed
                     cash -= cash_used
                     break
 
-                # Fill shortfall: taxable → Roth → IRA
-                # Roth is used BEFORE IRA for tax payments because Roth WDs are
-                # tax-free — they add no ordinary income, breaking the recursive
-                # loop where IRA draws generate more tax requiring more IRA draws.
-                new_extra_sold   = min(taxable, shortfall)
-                if new_extra_sold > extra_sold and taxable > 0:   # incremental sale this iter
-                    inc = new_extra_sold - extra_sold
-                    gain_frac_8     = 1.0 - taxable_basis / taxable
-                    ltcg_from_sold += inc * gain_frac_8            # accumulate LTCG
+                # Try taxable sales first — these generate LTCG and need iteration
+                new_extra_sold = min(taxable, shortfall)
+                if new_extra_sold > extra_sold and taxable > 0:
+                    inc             = new_extra_sold - extra_sold
+                    gain_frac_8     = (taxable - taxable_basis) / taxable
+                    ltcg_from_sold += inc * gain_frac_8   # accumulate new LTCG
                     taxable_basis  -= (inc / taxable) * taxable_basis
-                shortfall       -= new_extra_sold
-                new_extra_roth   = min(roth, shortfall)   # tax-free — preferred over IRA
-                shortfall       -= new_extra_roth
-                new_extra_ira_wd = min(ira - extra_ira_wd, shortfall)  # last resort
-                shortfall       -= new_extra_ira_wd
+                shortfall -= new_extra_sold
 
-                # Check convergence: did the extra sales change from last iteration?
-                if (abs(new_extra_sold   - extra_sold)   < 1.0 and
-                    abs(new_extra_ira_wd - extra_ira_wd) < 1.0):
-                    # Converged — apply the final amounts
-                    extra_sold    = new_extra_sold
-                    extra_ira_wd  = new_extra_ira_wd
-                    cash         -= cash_used
-                    taxable      -= extra_sold
-                    roth         -= new_extra_roth   # tax-free; drawn before IRA
-                    ira          -= extra_ira_wd     # last resort; only if Roth exhausted
+                # Convergence check — only taxable sales need iteration
+                if abs(new_extra_sold - extra_sold) < 1.0:
+                    # Taxable sales converged.
+                    # Remaining shortfall paid by IRA gross-up first, then Roth.
+                    #
+                    # IRA gross-up: per IRC §3405, the tax withheld from an IRA
+                    # withdrawal is part of the SAME taxable event as the conversion.
+                    # Drawing extra IRA to pay the conversion tax is a gross-up,
+                    # NOT a new separate IRA withdrawal creating new income.
+                    # MAGI is NOT increased by this draw — it was already computed
+                    # on the conversion amount in step 6.
+                    #
+                    # Roth is the last resort — withdrawing from Roth to pay taxes
+                    # on a Roth conversion is circular (adding to Roth then removing
+                    # from it in the same year). Use only if IRA is exhausted.
+                    ira_tax_draw   = min(ira, shortfall)   # gross-up, NOT new income
+                    shortfall     -= ira_tax_draw
+                    new_extra_roth = min(roth, shortfall)  # last resort only
+
+                    cash    -= cash_used
+                    taxable -= new_extra_sold
+                    ira     -= ira_tax_draw
+                    roth    -= new_extra_roth
+                    extra_sold = new_extra_sold
                     break
 
-                extra_sold   = new_extra_sold
-                extra_ira_wd = new_extra_ira_wd
+                extra_sold = new_extra_sold
 
-            # Update the step-5 totals so the recorded row reflects everything
-            sold_tax  += extra_sold    # total taxable sold this year (steps 5 + 8)
-            ira_wd    += extra_ira_wd  # total IRA withdrawn this year (steps 5 + 8)
-            roth_wd   += new_extra_roth  # step-8 Roth drawn tax-free to pay taxes
-            magi_history[i] = magi     # record for IRMAA lookback
-
-
+            # Update totals for the output row
+            sold_tax += extra_sold     # all taxable sales this year (steps 5+8)
+            # ira_wd records only step-5 expense draws.
+            # ira_tax_draw is the IRS gross-up — same taxable event as roth_conv,
+            # NOT a separate IRA withdrawal per IRC §3405. Not added to ira_wd.
+            # new_extra_roth is used only when IRA is exhausted (rare).
+            magi_history[i] = magi
             # ── Step 9: Apply end-of-year investment returns ──────────────────
             # Taxable grows at price-only return (dividends already extracted above).
             # IRA and Roth grow at the full total return (dividends reinvested).

@@ -103,7 +103,7 @@ USE_QCD = st.sidebar.checkbox(
     "Use QCDs", value=True,
     help="Qualified Charitable Distribution: IRA-to-charity gift (age 70½+), excluded from income and counted toward the RMD.")
 QCD_ANNUAL_AMOUNT = st.sidebar.number_input(
-    "Annual QCD ($, household, today's $)", value=20_000, step=5_000, min_value=0,
+    "Annual QCD (Household, today's $)", value=20_000, step=5_000, min_value=0,
     help="Placeholder - set to your real annual giving by QCD.")
 QCD_START_AGE = st.sidebar.slider(
     "QCD start age", 70, 75, 71,

@@ -98,6 +98,26 @@ SCENARIO_MODE = st.sidebar.selectbox(
 )
 BENCHMARK_PREMIUM = st.sidebar.number_input("Benchmark ACA Premium ($)", value=18_000, step=500)
 
+st.sidebar.header("Charitable Giving (QCD)")
+USE_QCD = st.sidebar.checkbox(
+    "Use QCDs", value=True,
+    help="Qualified Charitable Distribution: IRA-to-charity gift (age 70½+), excluded from income and counted toward the RMD.")
+QCD_ANNUAL_AMOUNT = st.sidebar.number_input(
+    "Annual QCD ($, household, today's $)", value=20_000, step=5_000, min_value=0,
+    help="Placeholder - set to your real annual giving by QCD.")
+QCD_START_AGE = st.sidebar.slider(
+    "QCD start age", 70, 75, 71,
+    help="Eligible from 70½. Use 70 if your 70½ birthday falls in the year you turn 70.")
+QCD_NUM_PERSONS = st.sidebar.selectbox(
+    "IRA owners making QCDs", [1, 2], index=1,
+    help="IRS limit applies per IRA owner.")
+QCD_LIMIT_PER_PERSON = st.sidebar.number_input(
+    "QCD limit per person ($)", value=108_000, step=1_000,
+    help="IRS annual limit per IRA owner (2025: $108,000).")
+QCD_REPLACES_EXPENSES = st.sidebar.checkbox(
+    "QCD replaces existing giving in expenses", value=True,
+    help="Checked: giving is already inside Base Expenses, so the QCD substitutes for that spending. Unchecked: giving is extra, on top of expenses.")
+
 st.sidebar.header("Grid Analysis (Chart 5)")
 RUN_GRID        = st.sidebar.checkbox("Run Grid Analysis", value=True)
 GRID_SIMS       = st.sidebar.slider("Grid Sims per Cell", 100, 1_000, 500, step=100)
@@ -150,6 +170,12 @@ def _patch_sim():
     sim.BENCHMARK_PREMIUM = BENCHMARK_PREMIUM
     sim.SCENARIO_MODE     = SCENARIO_MODE
     sim.ROTH_END_AGE      = sim.RMD_START_AGE - 1
+    sim.USE_QCD               = USE_QCD
+    sim.QCD_ANNUAL_AMOUNT     = QCD_ANNUAL_AMOUNT
+    sim.QCD_START_AGE         = QCD_START_AGE
+    sim.QCD_NUM_PERSONS       = int(QCD_NUM_PERSONS)
+    sim.QCD_LIMIT_PER_PERSON  = QCD_LIMIT_PER_PERSON
+    sim.QCD_REPLACES_EXPENSES = QCD_REPLACES_EXPENSES
     sim.GRID_SIMS         = GRID_SIMS
     sim.GRID_TAXABLE      = _parse_millions(grid_tax_input)
     sim.GRID_IRA          = _parse_millions(grid_ira_input)
@@ -178,12 +204,13 @@ if st.button("🚀 Run Simulation"):
             surv_row = summary[summary["Age"] == END_AGE]
             surv_str = (f"{surv_row['Survival'].values[0]:.1%}"
                         if not surv_row.empty else "—")
-            c1,c2,c3,c4,c5 = st.columns(5)
+            c1,c2,c3,c4,c5,c6 = st.columns(6)
             c1.metric("Terminal Portfolio",     f"${fin['Portfolio']:,.0f}")
             c2.metric("Terminal Roth",          f"${fin['Roth']:,.0f}")
             c3.metric("Terminal IRA",           f"${fin['IRA']:,.0f}")
             c4.metric(f"Survival at {END_AGE}", surv_str)
             c5.metric("Total Conversions",      f"${df_med['Roth Conv'].sum():,.0f}")
+            c6.metric("Total QCDs",             f"${df_med['QCD'].sum():,.0f}")
 
             st.write("### Chart 1 — Monte Carlo Fan")
             st.pyplot(chart1_fan(summary))
@@ -212,6 +239,10 @@ SS start, and RMDs (75).
 and any tax spikes from large RMDs.
 
 **Why it matters:** Explains *why* the portfolio succeeds or fails — the mechanics behind the numbers.
+
+**QCDs:** Gold bars (when QCDs are on) show gifts paid straight from the IRA to charity. They are
+not income, so they never appear in MAGI, and they count toward the RMD (the red bar shows only the
+taxable part of the RMD).
 """)
 
             st.write("### Chart 3 — Percentile Scenario Paths")
@@ -282,6 +313,7 @@ Roth conversion versus which are already fully optimized.
                 st.metric(f"Survival at {END_AGE}",
                           f"{surv_a[0]:.1%}" if len(surv_a) else "—")
                 st.metric("Total Conversions",    f"${df_med_a['Roth Conv'].sum():,.0f}")
+                st.metric("Total QCDs",           f"${df_med_a['QCD'].sum():,.0f}")
             with col2:
                 st.markdown(f"**{label_b}**")
                 st.metric("Terminal Portfolio",   f"${fin_b['Portfolio']:,.0f}")
@@ -289,6 +321,7 @@ Roth conversion versus which are already fully optimized.
                 st.metric(f"Survival at {END_AGE}",
                           f"{surv_b[0]:.1%}" if len(surv_b) else "—")
                 st.metric("Total Conversions",    f"${df_med_b['Roth Conv'].sum():,.0f}")
+                st.metric("Total QCDs",           f"${df_med_b['QCD'].sum():,.0f}")
 
             st.write(f"### Chart 1 — Monte Carlo Fan  |  {label_a}")
             st.pyplot(chart1_fan(sum_a))
@@ -318,6 +351,10 @@ conversion amounts (Panel 1), IRA drawdown pace (Panel 2), and late-life tax bur
 more conversion. Lower late-life taxes in Panel 3 confirm the IRA was better depleted.
 
 **Why it matters:** Explains the *mechanism* behind each scenario's outcome.
+
+**QCDs:** Gold bars (when QCDs are on) show gifts paid straight from the IRA to charity. They are
+not income, so they never appear in MAGI, and they count toward the RMD (the red bar shows only the
+taxable part of the RMD).
 """)
 
             st.write("### Chart 3 — Percentile Scenario Paths")

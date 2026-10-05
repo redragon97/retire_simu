@@ -21,6 +21,8 @@ SECTIONS
   8.  Healthcare                 — ACA scenario mode, Medicare, IRMAA, NIIT
   9.  Tax Tables (2025)          — federal/LTCG/Virginia brackets, RMD factors
   10. Output                     — file names and chart colors
+  11. Grid Analysis              — IRA x taxable sweep (chart 5)
+  12. Qualified Charitable Distributions (QCDs)
 
 IMPORTANT: Do NOT edit retirement_planning_simulator.py to change parameters.
            All tunable values live here. The simulator file should never need
@@ -249,6 +251,7 @@ C_PURPLE = "#8064A2"    # Roth conversion, healthcare
 C_TEAL   = "#006464"    # taxable account, cash
 C_CYAN   = "#17BECF"    # Roth withdrawals (tax-free)
 C_GRAY   = "#595959"    # milestone annotations
+C_GOLD   = "#B8860B"    # QCD (gift paid directly from IRA to charity)
 GRID_CLR = "#CCCCCC"    # chart gridlines
 
 
@@ -269,3 +272,31 @@ GRID_SIMS    = 500   # sims per grid cell (fewer than main SIMS for speed)
 GRID_TAXABLE = [0, 1_000_000, 2_000_000, 3_000_000]   # taxable starting balances
 GRID_IRA     = [1_000_000, 2_000_000, 3_000_000,
                 4_000_000, 5_000_000, 6_000_000]        # IRA starting balances
+
+
+# =============================================================================
+# SECTION 12 — QUALIFIED CHARITABLE DISTRIBUTIONS (QCDs)
+# =============================================================================
+# IRS rules modeled (IRC Section 408(d)(8), IRS Pub 590-B):
+#   - The IRA owner must be at least 70 1/2 when the gift is made.
+#   - The money goes directly from the IRA to a qualifying public charity.
+#   - A QCD is EXCLUDED from gross income: it never reaches AGI/MAGI, so it
+#     also lowers taxable Social Security, NIIT exposure, ACA subsidy MAGI,
+#     IRMAA tiers and Virginia tax.
+#   - A QCD counts toward that year's RMD (satisfies it first):
+#       taxable RMD = max(0, RMD - QCD)
+#   - Annual limit per IRA owner (indexed by the IRS; $108,000 in 2025).
+#   - You cannot also deduct a QCD as an itemized charitable deduction. The
+#     simulator uses the standard deduction, so no double counting occurs.
+#     (If you itemize, the QCD advantage shown here is overstated.)
+#
+# Not modeled: split-interest-entity QCD, spouses with different ages, and the
+# reduction for deductible IRA contributions made after age 70 1/2.
+
+USE_QCD = True                  # False = no QCDs (reproduces the pre-QCD results)
+QCD_ANNUAL_AMOUNT = 20_000      # PLACEHOLDER - set to your real giving by QCD, per year, today's dollars (household total)
+QCD_START_AGE = 71              # eligible from 70 1/2: use 70 if your 70 1/2 birthday falls in the year you turn 70
+QCD_LIMIT_PER_PERSON = 108_000  # IRS annual limit per IRA owner (2025), held constant in real terms
+QCD_NUM_PERSONS      = 2        # household cap = limit x persons (1 if only one spouse has an IRA)
+QCD_REPLACES_EXPENSES = True    # True: this giving is already inside BASE_EXPENSES, so the QCD
+                                #       replaces that spending. False: giving is extra, on top of expenses.

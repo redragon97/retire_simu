@@ -482,21 +482,29 @@ def run_simulation(scenario_label="Baseline"):
             qual_div  = dividends * QUAL_DIV_PCT          # qualified dividend income
             cash     += dividends                         # dividends land in cash account
 
-            # ── Step 3: Required Minimum Distribution (age 73+) ──────────────
+            # ── Step 3: RMD and Qualified Charitable Distribution (QCD) ──────
             # IRS mandates a minimum annual withdrawal from pre-tax accounts.
             # The RMD is computed from the IRS Uniform Lifetime Table factor.
-            # RMD goes directly to cash (it is ordinary income when received).
+            # A QCD (IRC 408(d)(8)) goes straight from the IRA to charity: it is
+            # NOT income (never reaches AGI/MAGI) and it counts toward the RMD
+            # first, so only the remainder of the RMD is taxable and lands in cash.
             rmd = 0.0
             if age >= RMD_START_AGE:
-                rmd   = min(ira / RMD_TABLE.get(age, 8.9), ira)
-                ira  -= rmd
-                cash += rmd
+                rmd = min(ira / RMD_TABLE.get(age, 8.9), ira)
+            qcd = 0.0
+            if USE_QCD and age >= QCD_START_AGE and ira > 0:
+                qcd = min(QCD_ANNUAL_AMOUNT, QCD_LIMIT_PER_PERSON * QCD_NUM_PERSONS, ira)
+            rmd_taxable = max(0.0, rmd - qcd)     # part of RMD not satisfied by QCD
+            ira  -= (rmd_taxable + qcd)
+            cash += rmd_taxable
+            # If giving is already inside BASE_EXPENSES, the QCD replaces that spending.
+            qcd_offset = qcd if QCD_REPLACES_EXPENSES else 0.0
 
             # ── Step 4: Roth conversion decision (ages 60–72 only) ───────────
             # Estimate LTCG from taxable sales needed to cover expenses.
             # This is passed to the optimizer separately from ordinary income
             # because LTCG is taxed at preferential rates, not bracket rates.
-            expected_sold = min(taxable, max(0.0, expenses - ss - cash))
+            expected_sold = min(taxable, max(0.0, expenses - qcd_offset - ss - cash))
             # Dynamic gain fraction: as price return grows the account without
             # growing the basis, the taxable gain fraction rises over time.
             gain_frac_est = (1.0 - taxable_basis / taxable) if taxable > 0 else (1.0 - COST_BASIS_PCT)
@@ -511,7 +519,7 @@ def run_simulation(scenario_label="Baseline"):
             # ss is passed separately so the optimizer re-computes the taxable SS
             # fraction at each conversion level (it rises with income via the
             # provisional income test — freezing it at conv=0 understates cost).
-            rmd_ord_div = rmd + ord_div
+            rmd_ord_div = rmd_taxable + ord_div
 
             roth_conv = 0.0
             if age <= ROTH_END_AGE and ira > 0:
@@ -559,7 +567,7 @@ def run_simulation(scenario_label="Baseline"):
                                   if age >= MEDICARE_AGE else aca_net_premium(magi_est))
                     tax_est    = fed_est + va_est + niit_est + h_est
                     # Cash also needs to cover living expenses after SS
-                    needed     = max(0.0, smile_expenses(age) - ss) + tax_est
+                    needed     = max(0.0, smile_expenses(age) - qcd_offset - ss) + tax_est
 
                     if non_ira_liquid < needed:
                         # Binary-search: largest conversion coverable by non-IRA assets
@@ -578,7 +586,7 @@ def run_simulation(scenario_label="Baseline"):
                             h_m    = (MEDICARE_BASE + irmaa_surcharge(irmaa_opt_magi)
                                       if age >= MEDICARE_AGE else aca_net_premium(magi_m))
                             tax_m  = fed_m + va_m + niit_m + h_m
-                            need_m = max(0.0, smile_expenses(age) - ss) + tax_m
+                            need_m = max(0.0, smile_expenses(age) - qcd_offset - ss) + tax_m
                             if non_ira_liquid >= need_m:
                                 lo = mid
                             else:
@@ -593,7 +601,10 @@ def run_simulation(scenario_label="Baseline"):
             # Waterfall: most liquid and tax-efficient sources drawn first.
             # SS offsets the need before any portfolio withdrawal.
             # Roth is drawn last to preserve tax-free compound growth.
-            needed    = max(0.0, expenses - ss)
+            net_need  = expenses - qcd_offset - ss
+            if net_need < 0:
+                cash += -net_need          # surplus SS is kept, not discarded
+            needed    = max(0.0, net_need)
             used_cash = min(cash, needed);    cash    -= used_cash;    needed -= used_cash
             sold_tax  = min(taxable, needed)
             if sold_tax > 0 and taxable > 0:
@@ -609,51 +620,34 @@ def run_simulation(scenario_label="Baseline"):
 
             # ── Steps 6–8: Compute tax, healthcare, and pay ─────────────────
             #
-            # IRS RULE (IRC §3405, IRS Pub 590-B):
-            # A Traditional IRA withdrawal has ONE taxable event — the GROSS
-            # withdrawal is ordinary income. The portion withheld/paid to the IRS
-            # as tax is NOT a second taxable event. There is no tax-on-tax loop.
-            #
-            # Correct model:
-            #   Step 6: Compute tax on all income recognized THIS year:
-            #           roth_conv, SS taxable, dividends, LTCG from taxable sales.
-            #           IRA draws to fund the tax bill are the same gross-up event
-            #           and do NOT add to MAGI or create additional tax.
-            #   Step 7: Healthcare cost.
-            #   Step 8: Pay total_due. One iteration pass handles the taxable-sale
-            #           LTCG feedback (extra sales → more LTCG → slightly more tax).
-            #           IRA and Roth draws for taxes require NO iteration.
+            # Every Traditional IRA distribution is ordinary income, including
+            # one taken to pay a tax bill. The extra draw T needed to cover tax
+            # at effective rate t on base income is a convergent series
+            # (T = t*base/(1-t)), so there is no endless loop; we solve it by
+            # iteration. Payment order: cash -> taxable -> IRA -> Roth.
+            # Feedbacks handled together: taxable sales add LTCG, IRA draws add
+            # ordinary income (and taxable SS), and both change tax and ACA/IRMAA.
+            # Qualified charitable distributions are excluded from all of it.
+            gain_frac_8 = ((taxable - taxable_basis) / taxable) if taxable > 0 else 0.0
+            extra_sold = extra_ira_tax = extra_roth_tax = 0.0
 
-            # Gain fraction for taxable account after step-5 sales
-            gain_frac      = ((taxable - taxable_basis) / taxable
-                              if taxable > 0 else 0.0)
-            # Accumulate LTCG from taxable sales (step 5 baseline; grows if step 8
-            # also requires taxable sales)
-            ltcg_from_sold = sold_tax * gain_frac
-
-            extra_sold     = 0.0   # additional taxable sold in step 8
-            new_extra_roth = 0.0   # Roth drawn tax-free to cover shortfall
-
-            for _iter in range(8):
-
-                # ── Step 6: Recompute tax on all recognized income ────────────
-                # total_sold includes both step-5 and step-8 extra taxable sales
-                # (step-8 extra sales generate LTCG → need iteration)
-                current_ltcg   = ltcg_from_sold   # accumulates via gain_frac_8 below
-                other_for_ss   = (rmd + roth_conv + ira_wd + ord_div
-                                  + current_ltcg + qual_div)
+            for _iter in range(100):
+                ltcg_sales     = ltcg_from_sold + extra_sold * gain_frac_8
+                tot_ira_wd     = ira_wd + extra_ira_tax
+                other_for_ss   = (rmd_taxable + roth_conv + tot_ira_wd + ord_div
+                                  + ltcg_sales + qual_div)
                 ss_taxable     = calc_ss_taxable(ss, other_for_ss)
-                ordinary_gross = rmd + roth_conv + ira_wd + ss_taxable + ord_div
-                ltcg           = current_ltcg + qual_div
+                ordinary_gross = rmd_taxable + roth_conv + tot_ira_wd + ss_taxable + ord_div
+                ltcg           = ltcg_sales + qual_div
                 magi           = ordinary_gross + ltcg
 
                 fed_tax  = calc_ordinary_tax(ordinary_gross, brackets, std)
                 fed_tax += calc_ltcg_tax(ltcg, ordinary_gross, std, ltcg_bkts)
                 niit     = calc_niit(ltcg, ord_div, magi)
-                va_tax   = calc_va_tax(rmd + roth_conv + ira_wd + ord_div + ltcg)
+                va_tax   = calc_va_tax(rmd_taxable + roth_conv + tot_ira_wd + ord_div + ltcg)
                 total_tax = fed_tax + niit + va_tax
 
-                # ── Step 7: Healthcare cost ────────────────────────────────────
+                # ── Step 7: Healthcare cost ────────────────────────────────
                 irmaa_magi = magi_history[i - 2] if i >= 2 else 0.0
                 if age >= MEDICARE_AGE:
                     health = MEDICARE_BASE + irmaa_surcharge(irmaa_magi)
@@ -662,58 +656,32 @@ def run_simulation(scenario_label="Baseline"):
                 else:
                     health = BENCHMARK_PREMIUM
 
-                # ── Step 8: Pay total_due ─────────────────────────────────────
+                # ── Step 8: Pay total_due ──────────────────────────────────
                 due       = total_tax + health
-                cash_used = min(cash, due)
-                shortfall = due - cash_used
+                shortfall = max(0.0, due - cash)
+                new_sold  = min(taxable, shortfall);  shortfall -= new_sold
+                new_ira   = min(ira, shortfall);      shortfall -= new_ira
+                new_roth  = min(roth, shortfall)
 
-                if shortfall < 0.01:
-                    cash -= cash_used
+                converged = (abs(new_sold - extra_sold) < 0.001
+                             and abs(new_ira - extra_ira_tax) < 0.001
+                             and abs(new_roth - extra_roth_tax) < 0.001)
+                extra_sold, extra_ira_tax, extra_roth_tax = new_sold, new_ira, new_roth
+                if converged:
                     break
 
-                # Try taxable sales first — these generate LTCG and need iteration
-                new_extra_sold = min(taxable, shortfall)
-                if new_extra_sold > extra_sold and taxable > 0:
-                    inc             = new_extra_sold - extra_sold
-                    gain_frac_8     = (taxable - taxable_basis) / taxable
-                    ltcg_from_sold += inc * gain_frac_8   # accumulate new LTCG
-                    taxable_basis  -= (inc / taxable) * taxable_basis
-                shortfall -= new_extra_sold
-
-                # Convergence check — only taxable sales need iteration
-                if abs(new_extra_sold - extra_sold) < 1.0:
-                    # Taxable sales converged.
-                    # Remaining shortfall paid by IRA gross-up first, then Roth.
-                    #
-                    # IRA gross-up: per IRC §3405, the tax withheld from an IRA
-                    # withdrawal is part of the SAME taxable event as the conversion.
-                    # Drawing extra IRA to pay the conversion tax is a gross-up,
-                    # NOT a new separate IRA withdrawal creating new income.
-                    # MAGI is NOT increased by this draw — it was already computed
-                    # on the conversion amount in step 6.
-                    #
-                    # Roth is the last resort — withdrawing from Roth to pay taxes
-                    # on a Roth conversion is circular (adding to Roth then removing
-                    # from it in the same year). Use only if IRA is exhausted.
-                    ira_tax_draw   = min(ira, shortfall)   # gross-up, NOT new income
-                    shortfall     -= ira_tax_draw
-                    new_extra_roth = min(roth, shortfall)  # last resort only
-
-                    cash    -= cash_used
-                    taxable -= new_extra_sold
-                    ira     -= ira_tax_draw
-                    roth    -= new_extra_roth
-                    extra_sold = new_extra_sold
-                    break
-
-                extra_sold = new_extra_sold
+            # Apply the converged payments
+            cash          -= min(cash, due)
+            if taxable > 0:
+                taxable_basis -= (extra_sold / taxable) * taxable_basis
+            taxable       -= extra_sold
+            ira           -= extra_ira_tax
+            roth          -= extra_roth_tax
 
             # Update totals for the output row
-            sold_tax += extra_sold     # all taxable sales this year (steps 5+8)
-            # ira_wd records only step-5 expense draws.
-            # ira_tax_draw is the IRS gross-up — same taxable event as roth_conv,
-            # NOT a separate IRA withdrawal per IRC §3405. Not added to ira_wd.
-            # new_extra_roth is used only when IRA is exhausted (rare).
+            sold_tax += extra_sold
+            ira_wd   += extra_ira_tax
+            roth_wd  += extra_roth_tax
             magi_history[i] = magi
             # ── Step 9: Apply end-of-year investment returns ──────────────────
             # Taxable grows at price-only return (dividends already extracted above).
@@ -737,6 +705,8 @@ def run_simulation(scenario_label="Baseline"):
                 # Income sources
                 "SS":            ss,
                 "RMD":           rmd,
+                "RMD Taxable":   rmd_taxable,
+                "QCD":           qcd,
                 "Roth Conv":     roth_conv,
                 "Taxable Sold":  sold_tax,
                 "IRA WD":        ira_wd,
@@ -911,14 +881,18 @@ def chart2_median(df_med, filename="chart2_median_detail.png", subtitle="Median 
     b1 = b0 + df_med["Taxable Sold"]
     b2 = b1 + df_med["Roth Conv"]
     b3 = b2 + df_med["IRA WD"]
-    b4 = b3 + df_med["RMD"]
+    rmd_cash = df_med["RMD Taxable"] if "RMD Taxable" in df_med else df_med["RMD"]
+    b4 = b3 + rmd_cash
+    b5 = b4 + df_med["Roth WD"]
 
     ax1.bar(ages, df_med["SS"],           color=C_GREEN,  label="Social Security",           alpha=0.9)
     ax1.bar(ages, df_med["Taxable Sold"], bottom=b0,       color=C_TEAL,   label="Taxable Sold",     alpha=0.9)
     ax1.bar(ages, df_med["Roth Conv"],    bottom=b1,       color=C_PURPLE, label="Roth Conv (tax event)", alpha=0.9)
     ax1.bar(ages, df_med["IRA WD"],       bottom=b2,       color=C_ORANGE, label="IRA Withdrawal",   alpha=0.9)
-    ax1.bar(ages, df_med["RMD"],          bottom=b3,       color=C_RED,    label="RMD",              alpha=0.9)
+    ax1.bar(ages, rmd_cash,               bottom=b3,       color=C_RED,    label="RMD (taxable part)", alpha=0.9)
     ax1.bar(ages, df_med["Roth WD"],      bottom=b4,       color=C_CYAN,   label="Roth WD (tax-free)", alpha=0.9)
+    if "QCD" in df_med and df_med["QCD"].sum() > 0:
+        ax1.bar(ages, df_med["QCD"], bottom=b5, color=C_GOLD, label="QCD to charity (not income)", alpha=0.9)
     ax1.plot(ages, df_med["Expenses"], color="black", lw=2, ls="--",
              label="Lifestyle Expenses (real $)", zorder=5)
 
@@ -1136,6 +1110,7 @@ def print_comparison(df_med_a, sum_a, label_a, df_med_b, sum_b, label_b):
         ("  of which IRA",                  df_med_a.iloc[-1]["IRA"],        df_med_b.iloc[-1]["IRA"]),
         ("  of which Roth",                 df_med_a.iloc[-1]["Roth"],       df_med_b.iloc[-1]["Roth"]),
         ("Total Roth conversions",          df_med_a["Roth Conv"].sum(),     df_med_b["Roth Conv"].sum()),
+        ("Total QCDs given to charity",     df_med_a["QCD"].sum(),           df_med_b["QCD"].sum()),
         ("Healthcare paid (pre-65 only)",   df_med_a[df_med_a["Age"]<65]["Health"].sum(),
                                             df_med_b[df_med_b["Age"]<65]["Health"].sum()),
         ("Total lifetime tax+health",       df_med_a["Tax"].sum()+df_med_a["Health"].sum(),
@@ -1452,6 +1427,8 @@ def _print_single_summary(df_med, summary, label):
     print(f"    IRA:                           ${fin['IRA']:>14,.0f}")
     print(f"    Roth:                          ${fin['Roth']:>14,.0f}")
     print(f"  Total Roth conversions:          ${df_med['Roth Conv'].sum():>14,.0f}")
+    print(f"  Total QCDs given to charity:     ${df_med['QCD'].sum():>14,.0f}")
+    print(f"  Lifetime tax + healthcare:       ${df_med['Tax'].sum()+df_med['Health'].sum():>14,.0f}")
     peak = df_med.loc[(df_med["Tax"] + df_med["Health"]).idxmax()]
     print(f"  Peak annual tax+health:          ${peak['Tax']+peak['Health']:>14,.0f}"
           f"  (age {int(peak['Age'])})")
@@ -1485,6 +1462,12 @@ if __name__ == "__main__":
         ("Initial Taxable",      TAXABLE_START),
         ("Initial IRA",          IRA_START),
         ("Initial Roth IRA",     ROTH_START),
+        ("Use QCDs",             USE_QCD),
+        ("QCD annual amount",    QCD_ANNUAL_AMOUNT),
+        ("QCD start age",        QCD_START_AGE),
+        ("QCD limit per person", QCD_LIMIT_PER_PERSON),
+        ("QCD eligible owners",  QCD_NUM_PERSONS),
+        ("QCD replaces expenses", QCD_REPLACES_EXPENSES),
         ("Mean Real Return",     MEAN_RETURN),
         ("Return Volatility",    VOL_RETURN),
         ("Crash Floor",          CRASH_FLOOR),
